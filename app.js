@@ -195,7 +195,7 @@ function inicializarSistema() {
     });
 }
 
-// Inicia imediatamente se o DOM já carregou, senão espera
+// Disparo seguro (Não depende do window.onload travado pelo PWA)
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', inicializarSistema);
 } else {
@@ -696,7 +696,7 @@ function renderizarMenuPrincipal() {
         </div>`;
     }
     
-    // O DASHBOARD AGORA FICA VISÍVEL PARA O PROMOTOR TAMBÉM!
+    // O DASHBOARD FICA VISÍVEL PARA TODOS AGORA
     html += `<div class="menu-card" onclick="abrirDashboard()">
         <div class="icon-wrapper" style="background: rgba(40, 167, 69, 0.15); color: #28a745;"><i data-lucide="pie-chart" style="width:26px; height:26px; margin:0;"></i></div>
         <span class="card-title">Dashboard<br>& Metas</span>
@@ -965,7 +965,7 @@ function ehPremium(textoBruto, supervisorId) {
 }
 
 
-// ================= ARQUITETURA DASHBOARD (BLINDADA) =================
+// ================= ARQUITETURA DASHBOARD (BLINDADA E ESCADINHA) =================
 
 function abrirDashboard() { 
     mudarTela('tela-dashboard'); 
@@ -1175,7 +1175,7 @@ function atualizarDadosDash() {
                 gerarGraficosDash(res.dados || []); 
             } catch(errG) {
                 console.error("Erro interno nos gráficos:", errG);
-                document.getElementById("total-vendas-geral").innerText = "Erro Gráfico";
+                document.getElementById("total-vendas-geral").innerText = "Erro: " + errG.message;
             }
         } else { document.getElementById("total-vendas-geral").innerText = "Erro!"; }
     })
@@ -1331,6 +1331,7 @@ function gerarGraficosDash(dadosVendas) {
         let vComissaoSup = valoresComissao[supKey] || valoresComissao["geral"] || {}; 
         let niveisGlobais = vComissaoSup.niveis || [{ id: 'l1', meta: 0 }, { id: 'l2', meta: 10 }];
         let aparelhosCfg = vComissaoSup.aparelhos || {};
+        let campanhasAtivas = vComissaoSup.campanhasPersonalizadas || [];
 
         for(let modChave in m.modelosPremiumVendidos) {
             let qtdMod = m.modelosPremiumVendidos[modChave];
@@ -1345,8 +1346,19 @@ function gerarGraficosDash(dadosVendas) {
                 } 
             });
             let payout = Number(cfg[nivelAlcancado]) || Number(cfg['l1']) || 0;
-            comissaoUser += (qtdMod * payout);
+            if (isNaN(payout)) payout = 0;
+            comissaoUser += (Number(qtdMod) * payout);
         }
+
+        campanhasAtivas.forEach(camp => {
+            if (isCampaignActiveInMonth(camp.dataInicio, camp.dataFim, mesFiltro)) {
+                if (camp.promotorAlvo && camp.promotorAlvo !== 'todos' && camp.promotorAlvo !== m.login) { return; }
+                let qtdParaBater = 0;
+                if (camp.aparelho === 'todos') { qtdParaBater = m.realizadoPremium; } else { qtdParaBater = m.modelosVendidosGeral[camp.aparelho] || 0; }
+                if (qtdParaBater >= Number(camp.qtdMinima)) { comissaoUser += (qtdParaBater * (Number(camp.bonus) || 0)); }
+            }
+        });
+
         m.comissaoAcumulada = comissaoUser;
     });
 
@@ -1361,7 +1373,7 @@ function gerarGraficosDash(dadosVendas) {
     document.getElementById("total-vendas-geral").innerText = `${totalGeral} un`;
     document.getElementById("media-diaria-geral").innerText = `${mediaDiaria} un`;
 
-    let comissaoTotalGeral = Object.values(metricas).reduce((acc, m) => acc + (m.comissaoAcumulada || 0), 0);
+    let comissaoTotalGeral = Object.values(metricas).reduce((acc, m) => acc + (Number(m.comissaoAcumulada) || 0), 0);
     let valorFormatado = `R$ ${comissaoTotalGeral.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
     let elComissao = document.getElementById("total-comissao-geral");
     elComissao.dataset.valor = valorFormatado;
@@ -1413,6 +1425,15 @@ function gerarGraficosDash(dadosVendas) {
     }
     document.getElementById("lista-ranking-promotores").innerHTML = htmlRank || "<span style='font-size:13px; color:var(--cor-secundaria);'>Nenhum dado encontrado no filtro.</span>"; loadIcons();
 
+    // ==============================================================
+    // RECONSTRUÇÃO FORÇADA DOS CONTAINERS DE GRÁFICO (EVITA ERRO DE CANVAS)
+    // ==============================================================
+    if (chartCoparticipacao) { chartCoparticipacao.destroy(); chartCoparticipacao = null; }
+    if (chartCapa) { chartCapa.destroy(); chartCapa = null; }
+    if (chartLojas) { chartLojas.destroy(); chartLojas = null; }
+    if (chartModelos) { chartModelos.destroy(); chartModelos = null; }
+    if (chartMetaGeral) { chartMetaGeral.destroy(); chartMetaGeral = null; }
+    
     let containerDynamicID = 'container-graficos-dinamicos-fix';
     let containerDash = document.getElementById(containerDynamicID);
     
@@ -1472,10 +1493,10 @@ function gerarGraficosDash(dadosVendas) {
     let maxMetaGeral = Math.max(...labelsProm.map(p => metricas[p].metaIndividual)) || 10;
     let maxMetaFoco = Math.max(...labelsProm.map(p => metricas[p].metaPremium)) || 10;
 
+    // 1. GRÁFICO: META GERAL
     let elGeralCanvas = document.getElementById('graficoMetaGeral');
     if (elGeralCanvas) {
         const ctxGeral = elGeralCanvas.getContext('2d');
-        if(chartMetaGeral) chartMetaGeral.destroy();
         chartMetaGeral = new Chart(ctxGeral, {
             type: 'bar', plugins: [pluginDatalabels],
             data: { 
@@ -1485,14 +1506,14 @@ function gerarGraficosDash(dadosVendas) {
                     { label: 'Realizado Total', data: labelsProm.map(p => Number(metricas[p].realizadoGeral) || 0), backgroundColor: '#0086ff' }
                 ]
             },
-            options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { position: 'bottom', labels:{color:corTextoGrafico} }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { if (ctx.datasetIndex === 0) return val + ' un'; let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; let pct = m.metaIndividual > 0 ? ((val / m.metaIndividual) * 100).toFixed(1) : 0; return [`${val} un`, `(${pct}%)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { x:{ticks:{color:corTextoGrafico}}, y: { beginAtZero: true, suggestedMax: maxMetaGeral * 1.3, ticks:{color:corTextoGrafico} } } }
+            options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { position: 'bottom', labels:{color:corTextoGrafico} }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { if (ctx.datasetIndex === 0) return val + ' un'; let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p] || { metaIndividual: 0, metaPremium: 0 }; let pct = m.metaIndividual > 0 ? ((val / m.metaIndividual) * 100).toFixed(1) : 0; return [`${val} un`, `(${pct}%)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { x:{ticks:{color:corTextoGrafico}}, y: { beginAtZero: true, suggestedMax: maxMetaGeral * 1.3, ticks:{color:corTextoGrafico} } } }
         });
     }
 
+    // 2. GRÁFICO: META FOCO
     let elFocoCanvas = document.getElementById('graficoMetaPremiumCapa');
     if (elFocoCanvas) {
         const ctxCapa = elFocoCanvas.getContext('2d');
-        if(chartCapa) chartCapa.destroy();
         chartCapa = new Chart(ctxCapa, {
             type: 'bar', plugins: [pluginDatalabels],
             data: { 
@@ -1502,36 +1523,37 @@ function gerarGraficosDash(dadosVendas) {
                     { label: 'Realizado Foco', data: labelsProm.map(p => Number(metricas[p].realizadoPremium) || 0), backgroundColor: '#ffc107' }
                 ]
             },
-            options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { position: 'bottom', labels:{color:corTextoGrafico} }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { if (ctx.datasetIndex === 0) return val + ' un'; let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; let pct = m.metaPremium > 0 ? ((val / m.metaPremium) * 100).toFixed(1) : 0; return [`${val} un`, `(${pct}%)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { x:{ticks:{color:corTextoGrafico}}, y: { beginAtZero: true, suggestedMax: maxMetaFoco * 1.3, ticks:{color:corTextoGrafico} } } }
+            options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { position: 'bottom', labels:{color:corTextoGrafico} }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { if (ctx.datasetIndex === 0) return val + ' un'; let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p] || { metaIndividual: 0, metaPremium: 0 }; let pct = m.metaPremium > 0 ? ((val / m.metaPremium) * 100).toFixed(1) : 0; return [`${val} un`, `(${pct}%)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { x:{ticks:{color:corTextoGrafico}}, y: { beginAtZero: true, suggestedMax: maxMetaFoco * 1.3, ticks:{color:corTextoGrafico} } } }
         });
     }
 
+    // 3. GRÁFICO: COPARTICIPAÇÃO
     let elCopartCanvas = document.getElementById('graficoCoparticipacaoPromotores');
     if (elCopartCanvas) {
         const ctxCopart = elCopartCanvas.getContext('2d');
-        if(chartCoparticipacao) chartCoparticipacao.destroy();
         chartCoparticipacao = new Chart(ctxCopart, {
             type: 'bar', plugins: [pluginDatalabels],
             data: { 
                 labels: labelsProm, 
                 datasets: [
-                    { label: '% Coparticipação', data: labelsProm.map(p => metricas[p].realizadoGeral > 0 ? Number(((metricas[p].realizadoPremium / metricas[p].realizadoGeral) * 100).toFixed(1)) : 0), backgroundColor: '#17a2b8' }
+                    { label: '% Coparticipação', data: labelsProm.map(p => metricas[p] && metricas[p].realizadoGeral > 0 ? Number(((metricas[p].realizadoPremium / metricas[p].realizadoGeral) * 100).toFixed(1)) : 0), backgroundColor: '#17a2b8' }
                 ] 
             },
-            options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { display: false }, tooltip: { padding: 12, callbacks: { label: function(context) { let p = context.chart.data.labels[context.dataIndex]; let m = metricas[p]; let linhas = [`Coparticipação: ${context.raw}% (${m.realizadoPremium} de ${m.realizadoGeral} un)`]; if (m.realizadoPremium > 0) { linhas.push('-------------------------'); linhas.push('Aparelhos Foco Vendidos:'); for (let mod in m.modelosPremiumVendidos) { linhas.push(`• ${m.modelosPremiumVendidos[mod]}x ${mod}`); } } else { linhas.push('-------------------------'); linhas.push('Nenhum aparelho foco vendido.'); } return linhas; } } }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; return [`${val}%`, `(${m.realizadoPremium} de ${m.realizadoGeral} un)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { x:{ticks:{color:corTextoGrafico}}, y: { beginAtZero: true, suggestedMax: 100, ticks:{color:corTextoGrafico} } } }
+            options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { display: false }, tooltip: { padding: 12, callbacks: { label: function(context) { let p = context.chart.data.labels[context.dataIndex]; let m = metricas[p] || { realizadoGeral: 0, realizadoPremium: 0, modelosPremiumVendidos: {} }; let linhas = [`Coparticipação: ${context.raw}% (${m.realizadoPremium} de ${m.realizadoGeral} un)`]; if (m.realizadoPremium > 0) { linhas.push('-------------------------'); linhas.push('Aparelhos Foco Vendidos:'); for (let mod in m.modelosPremiumVendidos) { linhas.push(`• ${m.modelosPremiumVendidos[mod]}x ${mod}`); } } else { linhas.push('-------------------------'); linhas.push('Nenhum aparelho foco vendido.'); } return linhas; } } }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p] || { realizadoGeral: 0, realizadoPremium: 0 }; return [`${val}%`, `(${m.realizadoPremium} de ${m.realizadoGeral} un)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { x:{ticks:{color:corTextoGrafico}}, y: { beginAtZero: true, suggestedMax: 100, ticks:{color:corTextoGrafico} } } }
         });
     }
 
+    // 4. GRÁFICO DE LOJAS
     let lojasSort = Object.keys(vendasPorLoja).sort((a,b) => a.localeCompare(b, undefined, {numeric:true, sensitivity:'base'}));
     if (lojasSort.length === 0) lojasSort = ["Nenhuma Loja"];
     
     let ctxLojas = recriarCanvasSeguro('wrap-graficoVendasLoja', 'graficoVendasLoja');
     if (ctxLojas) {
         document.getElementById('wrap-graficoVendasLoja').style.minWidth = Math.max(100, lojasSort.length * 18) + '%';
-        if(chartLojas) chartLojas.destroy();
         chartLojas = new Chart(ctxLojas, { type: 'bar', plugins: [pluginDatalabels], data: { labels: lojasSort, datasets: [{ data: lojasSort.map(l => Number(vendasPorLoja[l]) || 0), backgroundColor: '#28a745', borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 20 } }, scales: { x: { ticks: { display: false }, grid: { display: false } }, y: { beginAtZero: true } }, plugins: { legend: { display: false }, tooltip: { padding: 12, callbacks: { title: function(context) { return '🏪 ' + context[0].label; }, afterTitle: function(context) { return '👤 Promotor: ' + getPromotorDaLoja(context[0].label); }, label: function(context) { return 'Total Vendido: ' + context.raw + ' un'; } } }, datalabels: { anchor: 'end', align: 'top', color: corTextoGrafico, font: { weight: 'bold' }, formatter: (val) => val + ' un' } } } });
     }
 
+    // 5. GRÁFICO PIZZA (TOP MODELOS)
     let topModelos = Object.entries(vendasPorModelo).sort((a, b) => b[1] - a[1]).slice(0, 5);
     if (topModelos.length === 0) topModelos = [["Nenhum", 1]];
     
@@ -1539,7 +1561,6 @@ function gerarGraficosDash(dadosVendas) {
     if (elModelosCanvas && elModelosCanvas.parentElement) {
         elModelosCanvas.parentElement.innerHTML = '<canvas id="graficoTopModelos"></canvas>';
         const ctxMod = document.getElementById('graficoTopModelos').getContext('2d');
-        if(chartModelos) chartModelos.destroy();
         chartModelos = new Chart(ctxMod, { type: 'doughnut', plugins: [pluginDatalabels], data: { labels: topModelos.map(m => `${m[0]}`), datasets: [{ data: topModelos.map(m => m[1]), backgroundColor: ['#0086ff', '#28a745', '#ffc107', '#dc3545', '#6f42c1'] }] }, options: { maintainAspectRatio: false, responsive: true, plugins: { legend: { position: 'bottom', labels: { color: corTextoGrafico } }, datalabels: { color: '#fff', font: { weight: 'bold', size: 12 }, formatter: (value) => value > 0 && topModelos[0][0] !== "Nenhum" ? value + ' un' : '' } } } });
     }
 }
