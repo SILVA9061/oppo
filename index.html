@@ -5,14 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sistema de Vendas Multi Lojas</title>
 
-<!-- PWA: CONFIGURAÇÕES DO APLICATIVO INSTALÁVEL -->
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0086ff">
 
-<!-- Arquivo de CSS (Pintura e Design) -->
 <link rel="stylesheet" href="style.css">
 
-<!-- Bibliotecas Externas -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -57,7 +54,6 @@
     <div class="modal-content" style="background-color: #212121; border-radius: 16px; padding: 25px 20px; border: 1px solid #333;">
         <h3 style="color: #0086ff; margin-bottom: 10px; font-size: 22px;"><i data-lucide="clipboard-check"></i> Auditoria de Estoque</h3>
         <p style="color: #aaaaaa; font-size: 13px; margin-bottom: 20px; line-height: 1.4;">Foram detectadas edições na quantidade em estoque.<br>Para continuar, é obrigatório registrar o motivo da correção:</p>
-        
         <select id="select-motivo-estoque" style="width: 100%; padding: 14px; border-radius: 8px; border: 2px solid #ff9800; background: #2d2d2d; color: #ffffff; font-weight: bold; margin-bottom: 25px; font-size: 14px; outline: none; appearance: auto;">
             <option value="Erro de Contagem no Sistema">Erro de Contagem no Sistema</option>
             <option value="Lançamento indevido (Correção)">Lançamento indevido (Correção)</option>
@@ -67,7 +63,6 @@
             <option value="Furto / Divergência Desconhecida">Furto / Divergência Desconhecida</option>
             <option value="Outros Motivos">Outros</option>
         </select>
-        
         <div class="botoes-acao" style="gap: 15px;">
             <button class="btn-acao btn-limpar" style="background: #dc3545; border-radius: 8px; padding: 12px; font-size: 15px;" onclick="document.getElementById('modal-motivo-estoque').classList.remove('ativo');">Cancelar</button>
             <button class="btn-acao btn-enviar" style="background: #ff9800; border-radius: 8px; padding: 12px; font-size: 15px; color: #fff;" onclick="confirmarEnvioEstoqueMotivo()">Confirmar Correção</button>
@@ -80,15 +75,12 @@
     <div class="modal-fullscreen-content">
         <button onclick="fecharModalEquipe()" style="position: absolute; top: 15px; right: 15px; background: #dc3545; color: white; border: none; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"><i data-lucide="x" class="lucide-sm" style="margin:0;"></i></button>
         <h3 id="titulo-modal-equipe" style="margin-top: 0; margin-bottom: 20px; color: #0086ff; padding-right: 40px;"><i data-lucide="users"></i> Equipe</h3>
-
         <div class="tabs-header">
             <button class="tab-btn ativo equipe-tab-btn" onclick="switchTab('equipe-tab-promotores', 'equipe-tab')"><i data-lucide="user"></i> Promotores</button>
             <button class="tab-btn equipe-tab-btn" onclick="switchTab('equipe-tab-lojas', 'equipe-tab')"><i data-lucide="store"></i> Lojas & Vendedores</button>
         </div>
-
         <div id="equipe-tab-promotores" class="equipe-tab-content" style="display: block;">
             <div id="lista-modal-promotores" style="max-height: 250px; overflow-y: auto; margin-bottom: 15px;"></div>
-
             <div style="background: var(--bg-item); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
                 <strong style="font-size: 14px; color: #28a745; display: flex; align-items: center; margin-bottom: 12px;"><i data-lucide="user-plus"></i> Criar Novo Promotor</strong>
                 <div class="input-admin-row" style="margin-bottom: 8px;">
@@ -99,7 +91,6 @@
                     <input type="text" id="modal-promotor-senha" placeholder="Senha Padrão">
                     <input type="number" id="modal-promotor-meta" placeholder="Meta Individual Padrão">
                 </div>
-                
                 <div style="margin-bottom: 12px; background: var(--bg-container); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); text-align: left;">
                     <span style="font-size: 13px; font-weight: bold; color: #6f42c1; display: flex; align-items: center; margin-bottom: 10px;"><i data-lucide="shield"></i> Permissões de Acesso:</span>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px;">
@@ -109,7 +100,6 @@
                         <label style="cursor: pointer;"><input type="checkbox" id="perm-est-edit" checked> Editar Estoque</label>
                     </div>
                 </div>
-
                 <div style="margin-bottom: 15px; background: var(--bg-container); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color);">
                     <span style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria); display: block; margin-bottom: 8px;">Selecione as Lojas Permitidas:</span>
                     <div id="modal-promotor-lojas" style="display: grid; grid-template-columns: 1fr; gap: 8px; font-size: 13px; max-height: 150px; overflow-y: auto; text-align: left;"></div>
@@ -117,10 +107,8 @@
                 <button class="btn-acao btn-enviar" style="width: 100%; padding: 14px;" onclick="adminAddPromotorEquipe()"><i data-lucide="save"></i> Salvar Promotor</button>
             </div>
         </div>
-
         <div id="equipe-tab-lojas" class="equipe-tab-content" style="display: none;">
             <div id="lista-modal-lojas" style="max-height: 250px; overflow-y: auto; margin-bottom: 15px;"></div>
-
             <div style="background: var(--bg-item); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 15px;">
                 <strong style="font-size: 14px; color: #28a745; display: flex; align-items: center; margin-bottom: 12px;"><i data-lucide="plus-circle"></i> Criar Nova Loja (Nesta Região)</strong>
                 <div class="input-admin-row" style="margin-bottom: 8px;">
@@ -129,7 +117,6 @@
                 </div>
                 <button class="btn-acao btn-enviar" style="width: 100%; padding: 12px;" onclick="adminAddLojaEquipe()">Criar Loja</button>
             </div>
-
             <div style="background: var(--bg-item); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
                 <strong style="font-size: 14px; color: #ff9800; display: flex; align-items: center; margin-bottom: 12px;"><i data-lucide="user-plus"></i> Adicionar Vendedores (Na Loja)</strong>
                 <div class="input-admin-row" style="margin-bottom: 8px;">
@@ -158,39 +145,39 @@
 
 <!-- MODAL IMEI -->
 <div id="modal-imei" class="modal-overlay" style="z-index: 1001;">
-<div class="modal-content">
-<h3 id="modal-titulo-aparelho"><i data-lucide="smartphone"></i> Modelo</h3>
-<p>Deseja informar o IMEI deste aparelho?</p>
-<input type="number" id="input-imei" placeholder="Digite o IMEI (Opcional)">
-<div class="botoes-acao">
-<button class="btn-acao btn-limpar" onclick="confirmarImei(false)">Pular</button>
-<button class="btn-acao btn-enviar" onclick="confirmarImei(true)">Confirmar</button>
-</div>
-</div>
+    <div class="modal-content">
+        <h3 id="modal-titulo-aparelho"><i data-lucide="smartphone"></i> Modelo</h3>
+        <p>Deseja informar o IMEI deste aparelho?</p>
+        <input type="number" id="input-imei" placeholder="Digite o IMEI (Opcional)">
+        <div class="botoes-acao">
+            <button class="btn-acao btn-limpar" onclick="confirmarImei(false)">Pular</button>
+            <button class="btn-acao btn-enviar" onclick="confirmarImei(true)">Confirmar</button>
+        </div>
+    </div>
 </div>
 
 <!-- MODAL TROCA DE SENHA -->
 <div id="modal-senha" class="modal-overlay" style="z-index: 1001;">
-<div class="modal-content">
-<h3><i data-lucide="lock"></i> Segurança da Conta</h3>
-<p id="texto-modal-senha">Sua senha atual é a padrão. Deseja alterá-la para maior segurança?</p>
-<div id="etapa-pergunta-senha" style="display: block;">
-<div class="botoes-acao">
-<button class="btn-acao btn-limpar" onclick="responderTrocaSenha(false)">Não</button>
-<button class="btn-acao btn-enviar" onclick="responderTrocaSenha(true)">Sim</button>
-</div>
-</div>
-<div id="etapa-formulario-senha" style="display: none; text-align: left;">
-<label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria);">Nova Senha:</label>
-<input type="password" id="nova-senha-1" placeholder="Digite a nova senha">
-<label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria);">Confirmar Nova Senha:</label>
-<input type="password" id="nova-senha-2" placeholder="Confirme a nova senha">
-<div class="botoes-acao" style="margin-top: 15px;">
-<button class="btn-acao btn-limpar" onclick="cancelarTrocaSenha()">Cancelar</button>
-<button class="btn-acao btn-enviar" id="btn-salvar-senha" onclick="salvarNovaSenha()">Salvar Nova Senha</button>
-</div>
-</div>
-</div>
+    <div class="modal-content">
+        <h3><i data-lucide="lock"></i> Segurança da Conta</h3>
+        <p id="texto-modal-senha">Sua senha atual é a padrão. Deseja alterá-la para maior segurança?</p>
+        <div id="etapa-pergunta-senha" style="display: block;">
+            <div class="botoes-acao">
+                <button class="btn-acao btn-limpar" onclick="responderTrocaSenha(false)">Não</button>
+                <button class="btn-acao btn-enviar" onclick="responderTrocaSenha(true)">Sim</button>
+            </div>
+        </div>
+        <div id="etapa-formulario-senha" style="display: none; text-align: left;">
+            <label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria);">Nova Senha:</label>
+            <input type="password" id="nova-senha-1" placeholder="Digite a nova senha">
+            <label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria);">Confirmar Nova Senha:</label>
+            <input type="password" id="nova-senha-2" placeholder="Confirme a nova senha">
+            <div class="botoes-acao" style="margin-top: 15px;">
+                <button class="btn-acao btn-limpar" onclick="cancelarTrocaSenha()">Cancelar</button>
+                <button class="btn-acao btn-enviar" id="btn-salvar-senha" onclick="salvarNovaSenha()">Salvar Nova Senha</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="container">
@@ -353,16 +340,6 @@
         <select id="seletor-mes-dash" class="seletor-mes" style="padding: 10px 15px; font-size: 15px;" onchange="abrirDashboard()"><option value="">Mês Atual</option></select>
     </div>
 
-    <div id="container-filtro-supervisor-dash" style="display: none; margin-bottom: 15px;">
-        <label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria); display: block; text-align: left; margin-bottom: 6px;">Equipe / Região:</label>
-        <select id="filtro-supervisor-dash" class="seletor-mes" style="width: 100%; padding: 10px;" onchange="mudouSupervisorDash()"></select>
-    </div>
-    
-    <div id="container-filtro-promotor-dash" style="display: none; margin-bottom: 20px;">
-        <label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria); display: block; text-align: left; margin-bottom: 6px;">Promotor:</label>
-        <select id="filtro-promotor-dash" class="seletor-mes" style="width: 100%; padding: 10px; border-color: #17a2b8; color: #17a2b8; background-color: var(--bg-card);" onchange="abrirDashboard()"></select>
-    </div>
-
     <!-- CARDS DE VALORES -->
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
         <div style="background: #0086ff; color: white; padding: 20px 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,134,255,0.3);">
@@ -384,10 +361,8 @@
         <span id="icone-olho-comissao" style="background: rgba(255,255,255,0.2); border-radius: 50%; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center;"><i data-lucide="eye" style="margin:0;"></i></span>
     </div>
 
-    <!-- GRÁFICO DE PIZZA CORRIGIDO PARA NÃO FICAR GIGANTE -->
     <div style="background: var(--bg-container); padding: 20px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 12px var(--shadow-color); border: 1px solid var(--border-color);">
         <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="pie-chart"></i> Modelos Mais Vendidos</h4>
-        <!-- CONTEINER COM ALTURA MÁXIMA PARA LIMITAR O CRESCIMENTO -->
         <div style="position: relative; height: 260px; width: 100%; display: flex; justify-content: center;">
             <canvas id="graficoTopModelos"></canvas>
         </div>
@@ -399,26 +374,8 @@
         <div id="detalhe-coparticipacao-cards" style="font-size: 14px; color: var(--cor-secundaria); border-top: 1px dashed var(--border-color); padding-top: 15px;">Carregando detalhes...</div>
     </div>
 
-    <div style="background: var(--bg-container); padding: 20px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 12px var(--shadow-color); border: 1px solid var(--border-color);">
-        <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="target"></i> Meta Foco vs Realizado</h4>
-        <div style="width: 100%; overflow-x: auto; overflow-y: hidden;">
-            <div id="wrap-graficoMetaPremiumCapa" style="position: relative; height: 350px; min-width: 100%;">
-                <canvas id="graficoMetaPremiumCapa"></canvas>
-            </div>
-        </div>
-    </div>
-
-    <div style="background: var(--bg-container); padding: 20px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 12px var(--shadow-color); border: 1px solid var(--border-color);">
-        <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="percent"></i> Coparticipação Premium (%)</h4>
-        <div style="width: 100%; overflow-x: auto; overflow-y: hidden;">
-            <div id="wrap-graficoCoparticipacaoPromotores" style="position: relative; height: 350px; min-width: 100%;">
-                <canvas id="graficoCoparticipacaoPromotores"></canvas>
-            </div>
-        </div>
-    </div>
-
     <div style="background: var(--bg-container); padding: 20px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 12px var(--shadow-color); text-align: left; border: 1px solid var(--border-color);">
-        <h4 id="titulo-ranking-dash" style="margin-top:0; border-bottom: 2px solid var(--bg-item); padding-bottom: 12px; display: flex; align-items: center; gap: 8px;"><i data-lucide="award"></i> Ranking de Vendedores por Loja</h4>
+        <h4 id="titulo-ranking-dash" style="margin-top:0; border-bottom: 2px solid var(--bg-item); padding-bottom: 12px; display: flex; align-items: center; gap: 8px;"><i data-lucide="award"></i> Ranking</h4>
         <div id="lista-ranking-promotores" style="margin-top: 15px;">Carregando ranking...</div>
     </div>
 
@@ -514,27 +471,16 @@
 </div>
 
 </div>
-
-<!-- CARREGAMENTO DO ARQUIVO JS EXTERNO USANDO INJEÇÃO DINÂMICA (FURA-CACHE) -->
 <script>
-    var script = document.createElement('script');
-    script.src = 'app.js?v=' + new Date().getTime();
-    document.body.appendChild(script);
-</script>
-
-<!-- ATIVAÇÃO DO APLICATIVO (SERVICE WORKER) -->
-<script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js')
-        .then(registration => {
-          console.log('App instalado com sucesso no escopo: ', registration.scope);
-        })
-        .catch(err => {
-          console.log('Falha ao instalar o App: ', err);
+    // DESTRAVA O APLICATIVO ANTES MESMO DELE INICIAR SE O CACHE ESTIVER BUGADO
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for(let registration of registrations) {
+                registration.update(); 
+            }
         });
-    });
-  }
+    }
 </script>
+<script src="app.js?v=3.0"></script>
 </body>
 </html>
