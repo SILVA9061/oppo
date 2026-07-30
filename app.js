@@ -119,9 +119,10 @@ window.onload = function() {
     });
 };
 
+// >>> MODO DEUS 100% <<<
 function podeGerenciar(logado, alvoId) {
     if (!logado || !alvoId) return false;
-    // DEUS: Master e Gestor tem acesso livre a tudo
+    // O Master e o Gestor acessam absolutamente tudo
     if (logado.id === "master" || logado.cargo === "master" || logado.cargo === "gestor") return true;
     
     let alvo = bancoUsuarios[alvoId]; 
@@ -129,7 +130,11 @@ function podeGerenciar(logado, alvoId) {
 
     if (logado.cargo === "regional") {
         if (alvo.cargo === "supervisor") return (alvo.regiao === logado.regiao) || (alvo.criadoPor === logado.id);
-        if (alvo.cargo === "promotor") { let supDoPromotor = bancoUsuarios[alvo.criadoPor]; if (supDoPromotor && supDoPromotor.regiao === logado.regiao) return true; return alvo.regiao === logado.regiao; }
+        if (alvo.cargo === "promotor") { 
+            let supDoPromotor = bancoUsuarios[alvo.criadoPor]; 
+            if (supDoPromotor && supDoPromotor.regiao === logado.regiao) return true; 
+            return alvo.regiao === logado.regiao; 
+        }
         return false;
     }
     if (logado.cargo === "supervisor") return alvo.criadoPor === logado.id;
@@ -197,7 +202,7 @@ function adminAbrirModalTransferir(login) {
     document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="arrow-right-left"></i> Transferir Equipe`;
     let options = "";
     for(let k in bancoUsuarios) {
-        if(bancoUsuarios[k].cargo === "supervisor" || bancoUsuarios[k].cargo === "master" || bancoUsuarios[k].cargo === "gestor") {
+        if(bancoUsuarios[k].cargo === "supervisor" || bancoUsuarios[k].cargo === "master" || bancoUsuarios[k].cargo === "gestor" || bancoUsuarios[k].cargo === "regional") {
             let selected = (u.criadoPor === k) ? "selected" : "";
             options += `<option value="${k}" ${selected}>Equipe: ${bancoUsuarios[k].nome || k}</option>`;
         }
@@ -210,6 +215,7 @@ function adminAbrirModalTransferir(login) {
         if(novoSup) {
             bancoUsuarios[login].criadoPor = novoSup;
             if(bancoUsuarios[novoSup].regiao) bancoUsuarios[login].regiao = bancoUsuarios[novoSup].regiao;
+            renderizarAdminUsuarios();
             renderizarModalEquipe(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Promotor transferido de equipe!", "sucesso");
         }
     };
@@ -615,16 +621,34 @@ function renderizarFiltroPromotores() {
     let html = `<div class="card-promotor-filtro ${promotorFiltroAtual === 'todos' ? 'ativo' : ''}" onclick="setFiltroPromotor('todos')"><i data-lucide="layout-dashboard" class="lucide-sm"></i> Visão Geral (Todas)</div>`;
     
     if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") {
-        for (let key in bancoUsuarios) { 
-            if (bancoUsuarios[key].cargo === "supervisor") {
-                if(podeGerenciar(usuarioLogado, key)) {
-                    html += `<div class="card-promotor-filtro ${promotorFiltroAtual === key ? 'ativo' : ''}" onclick="setFiltroPromotor('${key}')"><i data-lucide="users" class="lucide-sm"></i> Equipe ${bancoUsuarios[key].nome || key}</div>`; 
+        for (let key in bancoUsuarios) {
+            let u = bancoUsuarios[key];
+            let isSupervisor = (u.cargo === "supervisor" || u.cargo === "gestor" || u.cargo === "regional" || key === "master");
+            if (isSupervisor) {
+                let temEquipe = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === key);
+                if (temEquipe && podeGerenciar(usuarioLogado, key)) {
+                    html += `<div class="card-promotor-filtro ${promotorFiltroAtual === key ? 'ativo' : ''}" onclick="setFiltroPromotor('${key}')"><i data-lucide="users" class="lucide-sm"></i> Equipe ${u.nome || key}</div>`;
                 }
-            } 
+            }
         }
-        if (promotorFiltroAtual !== 'todos' && bancoUsuarios[promotorFiltroAtual]) {
+        
+        let temOrfaos = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && (!bancoUsuarios[k].criadoPor || !bancoUsuarios[bancoUsuarios[k].criadoPor]));
+        if (temOrfaos) {
+            html += `<div class="card-promotor-filtro ${promotorFiltroAtual === 'orfaos' ? 'ativo' : ''}" onclick="setFiltroPromotor('orfaos')" style="border-color:#ffc107; color:#856404;"><i data-lucide="alert-triangle" class="lucide-sm"></i> Órfãos</div>`;
+        }
+
+        if (promotorFiltroAtual !== 'todos') {
             let htmlSub = `<div class="card-promotor-filtro ${subPromotorFiltroAtual === 'todos' ? 'ativo' : ''}" style="${subPromotorFiltroAtual === 'todos' ? 'background-color: #17a2b8; border-color: #17a2b8; color: white;' : 'background-color: var(--bg-item); color: var(--cor-secundaria); border-color: var(--border-color);'}" onclick="setSubFiltroPromotor('todos')"><i data-lucide="users" class="lucide-sm"></i> Todas (Equipe)</div>`;
-            for (let key in bancoUsuarios) { if (bancoUsuarios[key].cargo === "promotor" && bancoUsuarios[key].criadoPor === promotorFiltroAtual) { let isAt = subPromotorFiltroAtual === key; htmlSub += `<div class="card-promotor-filtro ${isAt ? 'ativo' : ''}" style="${isAt ? 'background-color: #17a2b8; border-color: #17a2b8; color: white;' : 'background-color: var(--bg-item); color: var(--cor-secundaria); border-color: var(--border-color);'}" onclick="setSubFiltroPromotor('${key}')"><i data-lucide="user" class="lucide-sm"></i> ${bancoUsuarios[key].nome || key}</div>`; } }
+            for (let key in bancoUsuarios) { 
+                let u = bancoUsuarios[key];
+                if (u.cargo === "promotor") {
+                    let pertence = (promotorFiltroAtual === 'orfaos') ? (!u.criadoPor || !bancoUsuarios[u.criadoPor]) : (u.criadoPor === promotorFiltroAtual);
+                    if (pertence) {
+                        let isAt = subPromotorFiltroAtual === key; 
+                        htmlSub += `<div class="card-promotor-filtro ${isAt ? 'ativo' : ''}" style="${isAt ? 'background-color: #17a2b8; border-color: #17a2b8; color: white;' : 'background-color: var(--bg-item); color: var(--cor-secundaria); border-color: var(--border-color);'}" onclick="setSubFiltroPromotor('${key}')"><i data-lucide="user" class="lucide-sm"></i> ${u.nome || key}</div>`;
+                    }
+                }
+            }
             if(divSub) { divSub.innerHTML = htmlSub; divSub.style.display = "flex"; }
         } else { if(divSub) divSub.style.display = "none"; }
     } else if (usuarioLogado.cargo === "supervisor") {
@@ -680,7 +704,26 @@ function renderizarListaAcompanhamento() {
         if (promotoresDaLoja.length === 0) promotoresDaLoja.push("sem_promotor");
         
         promotoresDaLoja.forEach(pKey => {
-            if (usuarioLogado.cargo === "supervisor") { if (pKey === "sem_promotor") return; if (bancoUsuarios[pKey].criadoPor !== usuarioLogado.id) return; if (promotorFiltroAtual !== "todos" && pKey !== promotorFiltroAtual) return; } else if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") { if (promotorFiltroAtual !== "todos") { if (pKey === "sem_promotor") return; if (bancoUsuarios[pKey].criadoPor !== promotorFiltroAtual) return; if (subPromotorFiltroAtual !== "todos" && pKey !== subPromotorFiltroAtual) return; } else { if (pKey !== "sem_promotor" && !podeGerenciar(usuarioLogado, bancoUsuarios[pKey].criadoPor)) return; } } else if (usuarioLogado.cargo === "promotor") { if (pKey !== usuarioLogado.id) return; }
+            if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") { 
+                if (promotorFiltroAtual !== "todos") { 
+                    if (pKey === "sem_promotor") return;
+                    if (promotorFiltroAtual === "orfaos") {
+                        if (bancoUsuarios[pKey].criadoPor && bancoUsuarios[bancoUsuarios[pKey].criadoPor]) return;
+                    } else {
+                        if (bancoUsuarios[pKey].criadoPor !== promotorFiltroAtual) return; 
+                    }
+                    if (subPromotorFiltroAtual !== "todos" && pKey !== subPromotorFiltroAtual) return; 
+                } else { 
+                    if (pKey !== "sem_promotor" && !podeGerenciar(usuarioLogado, bancoUsuarios[pKey]?.criadoPor)) return; 
+                } 
+            } else if (usuarioLogado.cargo === "supervisor") {
+                if (pKey === "sem_promotor") return; 
+                if (bancoUsuarios[pKey].criadoPor !== usuarioLogado.id) return; 
+                if (promotorFiltroAtual !== "todos" && pKey !== promotorFiltroAtual) return;
+            } else if (usuarioLogado.cargo === "promotor") {
+                if (pKey !== usuarioLogado.id) return;
+            }
+
             if (!promotoresGrupos[pKey]) promotoresGrupos[pKey] = { lojas: {} }; if (!promotoresGrupos[pKey].lojas[loja]) promotoresGrupos[pKey].lojas[loja] = []; 
             
             let rowAparelhos = getVal(row, ['aparelhos', 'aparelho', 'modelo', 'produto']);
@@ -705,7 +748,7 @@ function renderizarListaAcompanhamento() {
     } div.innerHTML = html; loadIcons();
 }
 
-// ================= FUNÇÕES DO ESTOQUE E MOSTRUÁRIO ================= //
+// ================= ESTOQUE E MOSTRUÁRIO ================= //
 
 function fecharModalConfirmMostruario() { document.getElementById('modal-confirm-mostruario').classList.remove('ativo'); mostruarioEmEdicao = null; }
 function fecharModalPromptMostruario() { document.getElementById('modal-prompt-mostruario').classList.remove('ativo'); mostruarioEmEdicao = null; }
@@ -732,11 +775,18 @@ function renderizarFiltroPromotoresEstoque() {
     
     if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") {
         for (let key in bancoUsuarios) {
-            if (bancoUsuarios[key].cargo === "supervisor") {
-                if (podeGerenciar(usuarioLogado, key)) {
-                    html += `<div class="card-promotor-filtro ${promotorEstoqueFiltroAtual === key ? 'ativo' : ''}" onclick="setFiltroPromotorEstoque('${key}')"><i data-lucide="users" class="lucide-sm"></i> Equipe ${bancoUsuarios[key].nome || key}</div>`;
+            let u = bancoUsuarios[key];
+            let isSupervisor = (u.cargo === "supervisor" || u.cargo === "gestor" || u.cargo === "regional" || key === "master");
+            if (isSupervisor) {
+                let temEquipe = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === key);
+                if (temEquipe && podeGerenciar(usuarioLogado, key)) {
+                    html += `<div class="card-promotor-filtro ${promotorEstoqueFiltroAtual === key ? 'ativo' : ''}" onclick="setFiltroPromotorEstoque('${key}')"><i data-lucide="users" class="lucide-sm"></i> Equipe ${u.nome || key}</div>`;
                 }
             }
+        }
+        let temOrfaos = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && (!bancoUsuarios[k].criadoPor || !bancoUsuarios[bancoUsuarios[k].criadoPor]));
+        if (temOrfaos) {
+            html += `<div class="card-promotor-filtro ${promotorEstoqueFiltroAtual === 'orfaos' ? 'ativo' : ''}" onclick="setFiltroPromotorEstoque('orfaos')" style="border-color:#ffc107; color:#856404;"><i data-lucide="alert-triangle" class="lucide-sm"></i> Órfãos</div>`;
         }
     } else if (usuarioLogado.cargo === "supervisor") {
         for (let key in bancoUsuarios) {
@@ -769,6 +819,12 @@ function renderizarListaEstoque() {
 
     if (promotorEstoqueFiltroAtual === "todos" && (usuarioLogado.cargo === "gestor" || usuarioLogado.id === "master")) {
         lojasAtivas = Object.keys(lojasConfig);
+    } else if (promotorEstoqueFiltroAtual === "orfaos") {
+        for (let k in bancoUsuarios) {
+            if (bancoUsuarios[k].cargo === "promotor" && (!bancoUsuarios[k].criadoPor || !bancoUsuarios[bancoUsuarios[k].criadoPor])) {
+                bancoUsuarios[k].lojasPermitidas.forEach(l => { if(!lojasAtivas.includes(l)) lojasAtivas.push(l); });
+            }
+        }
     } else if (promotorEstoqueFiltroAtual === "todos" && usuarioLogado.cargo === "regional") {
         for (let k in bancoUsuarios) {
             if (bancoUsuarios[k].cargo === "promotor" && podeGerenciar(usuarioLogado, k)) {
@@ -994,6 +1050,13 @@ function mudouSupHistorico() {
     let supAlvo = (usuarioLogado.cargo === "supervisor") ? usuarioLogado.id : selSup;
     if (supAlvo && supAlvo !== "todos") {
         for(let k in bancoUsuarios) { if(bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === supAlvo) { htmlOp += `<option value="${k}">${bancoUsuarios[k].nome || k}</option>`; } }
+    } else if (supAlvo === "todos" && (usuarioLogado.cargo === "master" || usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional")) {
+        for(let k in bancoUsuarios) { 
+            if(bancoUsuarios[k].cargo === "promotor" && podeGerenciar(usuarioLogado, k)) { 
+                let nomeSup = bancoUsuarios[k].criadoPor ? (bancoUsuarios[bancoUsuarios[k].criadoPor]?.nome || bancoUsuarios[k].criadoPor) : "Órfão";
+                htmlOp += `<option value="${k}">[${nomeSup}] ${bancoUsuarios[k].nome || k}</option>`; 
+            } 
+        }
     }
     selProm.innerHTML = htmlOp;
     aplicarFiltroHistorico();
@@ -1157,16 +1220,23 @@ function atualizarFiltroPromotorDash() {
     let htmlOp = '<option value="todos">Todos da Equipe</option>'; 
     let supAlvo = (usuarioLogado.cargo === "supervisor") ? usuarioLogado.id : selSup;
     
-    if (supAlvo && supAlvo !== "todos") { 
+    if (supAlvo && supAlvo !== "todos" && supAlvo !== "orfaos") { 
         for(let k in bancoUsuarios) { 
             if (bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === supAlvo) { 
                 htmlOp += `<option value="${k}">${bancoUsuarios[k].nome || k}</option>`; 
             } 
         } 
+    } else if (supAlvo === "orfaos") {
+        for(let k in bancoUsuarios) { 
+            let isOrfao = (!bancoUsuarios[k].criadoPor || !bancoUsuarios[bancoUsuarios[k].criadoPor]);
+            if (bancoUsuarios[k].cargo === "promotor" && isOrfao) { 
+                htmlOp += `<option value="${k}">${bancoUsuarios[k].nome || k}</option>`; 
+            } 
+        }
     } else if (supAlvo === "todos") {
         for(let k in bancoUsuarios) { 
             if (bancoUsuarios[k].cargo === "promotor" && podeGerenciar(usuarioLogado, k)) { 
-                let nomeSup = bancoUsuarios[k].criadoPor ? (bancoUsuarios[bancoUsuarios[k].criadoPor]?.nome || bancoUsuarios[k].criadoPor) : "Sem Equipe";
+                let nomeSup = bancoUsuarios[k].criadoPor ? (bancoUsuarios[bancoUsuarios[k].criadoPor]?.nome || bancoUsuarios[k].criadoPor) : "Órfão";
                 htmlOp += `<option value="${k}">[${nomeSup}] ${bancoUsuarios[k].nome || k}</option>`; 
             } 
         }
@@ -1186,12 +1256,16 @@ function abrirDashboard() {
         if(selSup.options.length <= 1) { 
             let htmlOp = '<option value="todos">Todas as Regiões (Geral)</option>'; 
             for(let k in bancoUsuarios) { 
-                if (bancoUsuarios[k].cargo === "supervisor") {
-                    if (podeGerenciar(usuarioLogado, k)) {
+                let isSupervisor = (bancoUsuarios[k].cargo === "supervisor" || bancoUsuarios[k].cargo === "gestor" || bancoUsuarios[k].cargo === "regional" || k === "master");
+                if (isSupervisor) {
+                    let temEquipe = Object.keys(bancoUsuarios).some(p => bancoUsuarios[p].cargo === "promotor" && bancoUsuarios[p].criadoPor === k);
+                    if(temEquipe && podeGerenciar(usuarioLogado, k)) {
                         htmlOp += `<option value="${k}">Equipe: ${bancoUsuarios[k].nome || k}</option>`; 
                     }
-                }
+                } 
             } 
+            let temOrfaos = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && (!bancoUsuarios[k].criadoPor || !bancoUsuarios[bancoUsuarios[k].criadoPor]));
+            if (temOrfaos) htmlOp += `<option value="orfaos">Promotores Órfãos</option>`;
             selSup.innerHTML = htmlOp; 
         }
     } else if (usuarioLogado.cargo === "supervisor") { document.getElementById('container-filtro-supervisor-dash').style.display = "none"; document.getElementById('container-filtro-promotor-dash').style.display = "block"; } 
@@ -1253,26 +1327,36 @@ function gerarGraficos(dadosVendas) {
 
     if (agrupamento === "supervisor") { 
         for (let k in bancoUsuarios) { 
-            if (bancoUsuarios[k].cargo === "supervisor") { 
+            let isSupervisor = (bancoUsuarios[k].cargo === "supervisor" || bancoUsuarios[k].cargo === "gestor" || bancoUsuarios[k].cargo === "regional" || k === "master");
+            if (isSupervisor) { 
                 if(podeGerenciar(usuarioLogado, k)) { 
                     let nomeSup = bancoUsuarios[k].nome || k; 
                     metricas[nomeSup] = { login: k, nome: nomeSup, metaPremium: 0, metaIndividual: 0, realizadoPremium: 0, realizadoGeral: 0, modelosPremiumVendidos: {}, modelosVendidosGeral: {}, comissaoAcumulada: 0 }; 
                 } 
             } 
         } 
+        metricas["Órfãos"] = { login: "orfaos", nome: "Órfãos", metaPremium: 0, metaIndividual: 0, realizadoPremium: 0, realizadoGeral: 0, modelosPremiumVendidos: {}, modelosVendidosGeral: {}, comissaoAcumulada: 0 };
         
         for (let k in bancoUsuarios) {
             if (bancoUsuarios[k].cargo === "promotor") {
                 let supDoPromotor = bancoUsuarios[k].criadoPor;
-                if (supervisorFoco !== "todos" && supDoPromotor !== supervisorFoco) continue;
-                if (supDoPromotor && bancoUsuarios[supDoPromotor]) {
-                    let nomeSup = bancoUsuarios[supDoPromotor].nome || supDoPromotor;
-                    let taxaSup = taxasCoparticipacao[supDoPromotor] || taxasCoparticipacao["geral"] || 25;
-                    let metaIndPromotor = bancoUsuarios[k].meta || 0;
-                    if(metricas[nomeSup]) { 
-                        metricas[nomeSup].metaPremium += (metaIndPromotor * (taxaSup / 100)); 
-                        metricas[nomeSup].metaIndividual += metaIndPromotor; 
-                    }
+                let isOrfao = (!supDoPromotor || !bancoUsuarios[supDoPromotor]);
+                
+                if (supervisorFoco !== "todos") {
+                    if (supervisorFoco === "orfaos" && !isOrfao) continue;
+                    if (supervisorFoco !== "orfaos" && supDoPromotor !== supervisorFoco) continue;
+                }
+                
+                let supKey = supDoPromotor || "geral";
+                if (isOrfao) supKey = "orfaos";
+                let nomeSup = isOrfao ? "Órfãos" : (bancoUsuarios[supKey]?.nome || supKey);
+                
+                let taxaSup = taxasCoparticipacao[supKey] || taxasCoparticipacao["geral"] || 25;
+                let metaIndPromotor = bancoUsuarios[k].meta || 0;
+                
+                if(metricas[nomeSup]) { 
+                    metricas[nomeSup].metaPremium += (metaIndPromotor * (taxaSup / 100)); 
+                    metricas[nomeSup].metaIndividual += metaIndPromotor; 
                 }
             }
         }
@@ -1280,12 +1364,18 @@ function gerarGraficos(dadosVendas) {
         for (let k in bancoUsuarios) {
             if (bancoUsuarios[k].cargo === "promotor") {
                 let supDoPromotor = bancoUsuarios[k].criadoPor;
-                if (supervisorFoco !== "todos" && supDoPromotor !== supervisorFoco) continue;
+                let isOrfao = (!supDoPromotor || !bancoUsuarios[supDoPromotor]);
+
+                if (supervisorFoco !== "todos") {
+                    if (supervisorFoco === "orfaos" && !isOrfao) continue;
+                    if (supervisorFoco !== "orfaos" && supDoPromotor !== supervisorFoco) continue;
+                }
                 if (promotorFoco !== "todos" && k !== promotorFoco) continue;
                 if (usuarioLogado.cargo !== "promotor" && !podeGerenciar(usuarioLogado, k)) continue;
 
                 let pNome = bancoUsuarios[k].nome || k;
-                let taxaSup = taxasCoparticipacao[supDoPromotor] || taxasCoparticipacao["geral"] || 25;
+                let supKey = isOrfao ? "geral" : supDoPromotor;
+                let taxaSup = taxasCoparticipacao[supKey] || taxasCoparticipacao["geral"] || 25;
                 metricas[pNome] = { 
                     login: k, 
                     nome: pNome, 
@@ -1318,7 +1408,8 @@ function gerarGraficos(dadosVendas) {
             for (let k in bancoUsuarios) {
                 let u = bancoUsuarios[k];
                 if (u.cargo === "promotor" && u.lojasPermitidas && u.lojasPermitidas.some(l => l.trim().toLowerCase() === loja.toLowerCase())) {
-                    let passaFiltroSup = (supervisorFoco === "todos" || u.criadoPor === supervisorFoco);
+                    let isOrfao = (!u.criadoPor || !bancoUsuarios[u.criadoPor]);
+                    let passaFiltroSup = (supervisorFoco === "todos" || (supervisorFoco === "orfaos" && isOrfao) || u.criadoPor === supervisorFoco);
                     let passaFiltroProm = (promotorFoco === "todos" || k === promotorFoco);
                     if (passaFiltroSup && passaFiltroProm && (podeGerenciar(usuarioLogado, k) || k === usuarioLogado.id)) {
                         pertenceAoEscopo = true; promotoresImpactados.add(k); if(u.criadoPor) supervisoresImpactados.add(u.criadoPor); 
@@ -1329,7 +1420,8 @@ function gerarGraficos(dadosVendas) {
             for (let k in bancoUsuarios) {
                 let u = bancoUsuarios[k];
                 if (u.cargo === "promotor" && vendNome.toLowerCase().includes((u.nome||k).toLowerCase())) {
-                    let passaFiltroSup = (supervisorFoco === "todos" || u.criadoPor === supervisorFoco);
+                    let isOrfao = (!u.criadoPor || !bancoUsuarios[u.criadoPor]);
+                    let passaFiltroSup = (supervisorFoco === "todos" || (supervisorFoco === "orfaos" && isOrfao) || u.criadoPor === supervisorFoco);
                     let passaFiltroProm = (promotorFoco === "todos" || k === promotorFoco);
                     if (passaFiltroSup && passaFiltroProm && (podeGerenciar(usuarioLogado, k) || k === usuarioLogado.id)) {
                         pertenceAoEscopo = true; promotoresImpactados.add(k); if(u.criadoPor) supervisoresImpactados.add(u.criadoPor); 
@@ -1365,8 +1457,16 @@ function gerarGraficos(dadosVendas) {
             if (visualizarVendedores && checkPrem) { vendNome.split(" e ").forEach(vN => { rankingPorLoja[loja][vN.trim()].qtdPremium += 1; }); }
 
             if (agrupamento === "supervisor") {
-                supervisoresImpactados.forEach(supKey => {
-                    let userSup = bancoUsuarios[supKey]; let nomeSup = userSup ? (userSup.nome || supKey) : supKey;
+                let treatedSupervisors = new Set();
+                promotoresImpactados.forEach(pk => {
+                    let u = bancoUsuarios[pk];
+                    let sKey = u.criadoPor;
+                    if (!sKey || !bancoUsuarios[sKey]) sKey = "orfaos";
+                    treatedSupervisors.add(sKey);
+                });
+
+                treatedSupervisors.forEach(supKey => {
+                    let nomeSup = (supKey === "orfaos") ? "Órfãos" : (bancoUsuarios[supKey]?.nome || supKey);
                     if (metricas[nomeSup]) {
                         metricas[nomeSup].realizadoGeral += 1; 
                         metricas[nomeSup].modelosVendidosGeral[chaveKey] = (metricas[nomeSup].modelosVendidosGeral[chaveKey] || 0) + 1;
@@ -1390,10 +1490,17 @@ function gerarGraficos(dadosVendas) {
         });
     });
 
+    if (metricas["Órfãos"] && metricas["Órfãos"].realizadoGeral === 0 && metricas["Órfãos"].metaIndividual === 0) {
+        delete metricas["Órfãos"];
+    }
+
     let mesFiltro = document.getElementById("seletor-mes-dash").value;
 
     Object.values(metricas).forEach(m => {
-        let comissaoUser = 0; let supKey = m.login; if (bancoUsuarios[m.login] && bancoUsuarios[m.login].cargo === "promotor") { supKey = bancoUsuarios[m.login].criadoPor || "geral"; }
+        let comissaoUser = 0; let supKey = m.login; 
+        if (m.login === "orfaos") supKey = "geral";
+        else if (bancoUsuarios[m.login] && bancoUsuarios[m.login].cargo === "promotor") { supKey = bancoUsuarios[m.login].criadoPor || "geral"; }
+        
         let vComissaoSup = valoresComissao[supKey] || valoresComissao["geral"] || {}; 
         let niveisGlobais = vComissaoSup.niveis || [{ id: 'l1', meta: 0 }, { id: 'l2', meta: 10 }];
         let aparelhosCfg = vComissaoSup.aparelhos || {};
@@ -1552,18 +1659,32 @@ function abrirAdmin() {
 function renderizarAdminUsuarios() {
     const div = document.getElementById('lista-admin-supervisores'); let htmlContent = "";
     
-    // Adicionar o Master na lista se quem estiver logado for o Master (para ele poder ver os promotores "órfãos" criados por ele)
-    if (usuarioLogado.id === "master") {
+    // MODO DEUS: O Master vê a própria equipe e os Órfãos soltos pelo sistema
+    if (usuarioLogado.id === "master" || usuarioLogado.cargo === "gestor") {
         htmlContent += `
-        <div class="linha-admin" style="flex-direction: column; align-items: stretch; padding: 12px; background: var(--bg-container); margin-bottom: 12px; box-shadow: 0 1px 3px var(--shadow-color); border: 2px solid var(--border-color);">
+        <div class="linha-admin" style="flex-direction: column; align-items: stretch; padding: 12px; background: var(--bg-container); margin-bottom: 12px; box-shadow: 0 1px 3px var(--shadow-color); border: 2px solid #0086ff;">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed var(--border-color); padding-bottom: 8px; margin-bottom: 8px;">
                 <div style="text-align: left;">
-                    <strong style="font-size: 15px; color: var(--cor-texto); display: block;">Diretor Master <span style="font-size: 10px; color: var(--cor-secundaria); font-weight: normal;">(@master)</span></strong>
-                    <span style="font-size: 12px; font-weight: bold; color: #6c757d;">👑 Master</span>
+                    <strong style="font-size: 15px; color: var(--cor-texto); display: block;">Sua Equipe Direta <span style="font-size: 10px; color: var(--cor-secundaria); font-weight: normal;">(@${usuarioLogado.id})</span></strong>
+                    <span style="font-size: 12px; font-weight: bold; color: #0086ff;">Promotores vinculados a você</span>
                 </div>
             </div>
-            <button class="btn-editar" style="background-color: #17a2b8; padding: 6px 12px; border-radius: 6px; width: 100%; margin-top: 8px;" onclick="abrirPainelEquipe('master')"><i data-lucide="settings" class="lucide-sm"></i> Gerenciar Lojas e Equipe Direta</button>
+            <button class="btn-editar" style="background-color: #0086ff; padding: 6px 12px; border-radius: 6px; width: 100%; margin-top: 8px;" onclick="abrirPainelEquipe('${usuarioLogado.id}')"><i data-lucide="users" class="lucide-sm"></i> Gerenciar Sua Equipe</button>
         </div>`;
+
+        let qtdOrfaos = Object.keys(bancoUsuarios).filter(k => bancoUsuarios[k].cargo === 'promotor' && (!bancoUsuarios[k].criadoPor || !bancoUsuarios[bancoUsuarios[k].criadoPor])).length;
+        if (qtdOrfaos > 0) {
+            htmlContent += `
+            <div class="linha-admin" style="flex-direction: column; align-items: stretch; padding: 12px; background: #fff3cd; margin-bottom: 12px; box-shadow: 0 1px 3px var(--shadow-color); border: 2px solid #ffc107;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #ffeeba; padding-bottom: 8px; margin-bottom: 8px;">
+                    <div style="text-align: left;">
+                        <strong style="font-size: 15px; color: #856404; display: block;">⚠️ Promotores Órfãos <span style="font-size: 10px; color: #856404; font-weight: normal;">(${qtdOrfaos} encontrados)</span></strong>
+                        <span style="font-size: 12px; font-weight: bold; color: #856404;">Perderam o vínculo com o supervisor</span>
+                    </div>
+                </div>
+                <button class="btn-editar" style="background-color: #ff9800; padding: 6px 12px; border-radius: 6px; width: 100%; margin-top: 8px; border:none;" onclick="abrirPainelEquipe('orfaos')"><i data-lucide="alert-triangle" class="lucide-sm"></i> Gerenciar Órfãos</button>
+            </div>`;
+        }
     }
 
     for(let l in bancoUsuarios) { 
@@ -1621,8 +1742,12 @@ function adminAddGestorSup() {
 
 function abrirPainelEquipe(login) {
     supervisorGerenciadoAtual = login;
-    let nome = (login === "master") ? "Diretor Master" : (bancoUsuarios[login].nome || login);
-    document.getElementById('titulo-modal-equipe').innerHTML = `<i data-lucide="users"></i> Equipe de ${nome}`;
+    let nome = "";
+    if (login === "orfaos") nome = "Promotores Desvinculados";
+    else if (login === "master") nome = "Diretor Master";
+    else nome = bancoUsuarios[login].nome || login;
+    
+    document.getElementById('titulo-modal-equipe').innerHTML = `<i data-lucide="users"></i> Equipe: ${nome}`;
     renderizarModalEquipe();
     document.getElementById('modal-gerenciar-equipe').classList.add('ativo'); loadIcons();
 }
@@ -1641,56 +1766,71 @@ function renderizarModalEquipe() {
     let htmlPromotores = "";
     for(let k in bancoUsuarios) {
         let u = bancoUsuarios[k];
-        if(u.cargo === "promotor" && u.criadoPor === supervisorGerenciadoAtual) {
-            htmlPromotores += `<div style="background: var(--bg-container); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; margin-bottom: 8px; text-align: left;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                    <strong style="font-size:14px; color:var(--cor-texto);"><i data-lucide="user" class="lucide-sm"></i> ${u.nome || k} (@${k})</strong>
-                    <div style="display:flex; gap:5px;">
-                        ${(usuarioLogado.id === "master" || usuarioLogado.cargo === "gestor") ? `<button class="btn-editar" style="background:#0086ff;" title="Transferir Equipe" onclick="adminAbrirModalTransferir('${k}')"><i data-lucide="arrow-right-left" class="lucide-sm"></i></button>` : ''}
-                        <button class="btn-editar" style="background:#ffc107; color:#856404;" title="Alterar Senha" onclick="adminAbrirModalSenha('${k}')"><i data-lucide="key" class="lucide-sm"></i></button>
-                        <button class="btn-editar" title="Editar Nome" onclick="adminAbrirModalNome('${k}')"><i data-lucide="edit-3" class="lucide-sm"></i></button>
-                        <button class="btn-editar" style="background:#6f42c1;" title="Permissões" onclick="adminAbrirModalPermissoes('${k}')"><i data-lucide="shield" class="lucide-sm"></i></button>
-                        <button class="btn-excluir" title="Excluir" onclick="adminRemoverUsuarioModalEquipe('${k}')"><i data-lucide="trash-2" class="lucide-sm"></i></button>
+        if (u.cargo === "promotor") {
+            let pertenceEquipe = false;
+            if (supervisorGerenciadoAtual === "orfaos") {
+                pertenceEquipe = (!u.criadoPor || !bancoUsuarios[u.criadoPor]);
+            } else {
+                pertenceEquipe = (u.criadoPor === supervisorGerenciadoAtual);
+            }
+
+            if(pertenceEquipe) {
+                htmlPromotores += `<div style="background: var(--bg-container); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; margin-bottom: 8px; text-align: left;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                        <strong style="font-size:14px; color:var(--cor-texto);"><i data-lucide="user" class="lucide-sm"></i> ${u.nome || k} (@${k})</strong>
+                        <div style="display:flex; gap:5px;">
+                            ${(usuarioLogado.id === "master" || usuarioLogado.cargo === "gestor") ? `<button class="btn-editar" style="background:#0086ff;" title="Transferir Equipe" onclick="adminAbrirModalTransferir('${k}')"><i data-lucide="arrow-right-left" class="lucide-sm"></i></button>` : ''}
+                            <button class="btn-editar" style="background:#ffc107; color:#856404;" title="Alterar Senha" onclick="adminAbrirModalSenha('${k}')"><i data-lucide="key" class="lucide-sm"></i></button>
+                            <button class="btn-editar" title="Editar Nome" onclick="adminAbrirModalNome('${k}')"><i data-lucide="edit-3" class="lucide-sm"></i></button>
+                            <button class="btn-editar" style="background:#6f42c1;" title="Permissões" onclick="adminAbrirModalPermissoes('${k}')"><i data-lucide="shield" class="lucide-sm"></i></button>
+                            <button class="btn-excluir" title="Excluir" onclick="adminRemoverUsuarioModalEquipe('${k}')"><i data-lucide="trash-2" class="lucide-sm"></i></button>
+                        </div>
                     </div>
-                </div>
-                <div style="font-size:12px; color:var(--cor-secundaria); display:flex; justify-content:space-between; align-items:center;">
-                    <span>Meta Padrão: <strong>${u.meta || 0}</strong> <button class="btn-editar-meta" onclick="adminAbrirModalMeta('${k}')"><i data-lucide="target" class="lucide-sm"></i></button></span>
-                    <span>Lojas: <strong>${u.lojasPermitidas.length}</strong> <button class="btn-editar" onclick="adminAbrirModalLojas('${k}')"><i data-lucide="store" class="lucide-sm"></i></button></span>
-                </div>
-            </div>`;
+                    <div style="font-size:12px; color:var(--cor-secundaria); display:flex; justify-content:space-between; align-items:center;">
+                        <span>Meta Padrão: <strong>${u.meta || 0}</strong> <button class="btn-editar-meta" onclick="adminAbrirModalMeta('${k}')"><i data-lucide="target" class="lucide-sm"></i></button></span>
+                        <span>Lojas: <strong>${u.lojasPermitidas.length}</strong> <button class="btn-editar" onclick="adminAbrirModalLojas('${k}')"><i data-lucide="store" class="lucide-sm"></i></button></span>
+                    </div>
+                </div>`;
+            }
         }
     }
-    divPromotores.innerHTML = htmlPromotores || "<p style='font-size:13px; color:var(--cor-secundaria);'>Nenhum promotor cadastrado.</p>";
+    divPromotores.innerHTML = htmlPromotores || "<p style='font-size:13px; color:var(--cor-secundaria);'>Nenhum promotor nesta lista.</p>";
 
     let htmlLojas = ""; let htmlSelLoja = "";
-    lojasDaRegiao.forEach(loja => {
-        let objL = lojasConfig[loja] || { vendedores: [], capa: 0 };
-        htmlSelLoja += `<option value="${loja}">${loja}</option>`;
-        
-        let vends = (objL.vendedores || []).map(v => `<span style="background:var(--bg-card); color:#0086ff; padding:2px 6px; border-radius:4px; font-size:11px; margin-right:4px; border:1px solid #b3d7ff;">${v} <i data-lucide="x" class="lucide-sm" style="cursor:pointer;" onclick="adminRemoverVendedor('${loja}', '${v}')"></i></span>`).join("");
+    
+    // Se for orfaos, nem exibe as lojas para não confundir
+    if (supervisorGerenciadoAtual !== "orfaos") {
+        lojasDaRegiao.forEach(loja => {
+            let objL = lojasConfig[loja] || { vendedores: [], capa: 0 };
+            htmlSelLoja += `<option value="${loja}">${loja}</option>`;
+            
+            let vends = (objL.vendedores || []).map(v => `<span style="background:var(--bg-card); color:#0086ff; padding:2px 6px; border-radius:4px; font-size:11px; margin-right:4px; border:1px solid #b3d7ff;">${v} <i data-lucide="x" class="lucide-sm" style="cursor:pointer;" onclick="adminRemoverVendedor('${loja}', '${v}')"></i></span>`).join("");
 
-        htmlLojas += `<div style="background: var(--bg-container); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; margin-bottom: 8px; text-align: left;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                <strong style="font-size:14px; color:var(--cor-texto);"><i data-lucide="store" class="lucide-sm"></i> ${loja}</strong>
-                <div style="display:flex; gap:5px;">
-                    <button class="btn-editar-meta" onclick="adminAbrirModalCapa('${loja}')"><i data-lucide="layers" class="lucide-sm"></i> Capa: ${objL.capa || 0}</button>
-                    <button class="btn-excluir" onclick="adminRemoverLoja('${loja}')"><i data-lucide="trash-2" class="lucide-sm"></i></button>
+            htmlLojas += `<div style="background: var(--bg-container); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; margin-bottom: 8px; text-align: left;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                    <strong style="font-size:14px; color:var(--cor-texto);"><i data-lucide="store" class="lucide-sm"></i> ${loja}</strong>
+                    <div style="display:flex; gap:5px;">
+                        <button class="btn-editar-meta" onclick="adminAbrirModalCapa('${loja}')"><i data-lucide="layers" class="lucide-sm"></i> Capa: ${objL.capa || 0}</button>
+                        <button class="btn-excluir" onclick="adminRemoverLoja('${loja}')"><i data-lucide="trash-2" class="lucide-sm"></i></button>
+                    </div>
                 </div>
-            </div>
-            <div style="font-size:12px; color:var(--cor-secundaria); margin-top:5px;">Vendedores: ${vends || 'Nenhum'}</div>
-        </div>`;
-    });
-    divLojas.innerHTML = htmlLojas || "<p style='font-size:13px; color:var(--cor-secundaria);'>Nenhuma loja na região.</p>";
-    selLoja.innerHTML = htmlSelLoja;
+                <div style="font-size:12px; color:var(--cor-secundaria); margin-top:5px;">Vendedores: ${vends || 'Nenhum'}</div>
+            </div>`;
+        });
+        divLojas.innerHTML = htmlLojas || "<p style='font-size:13px; color:var(--cor-secundaria);'>Nenhuma loja na região.</p>";
+        selLoja.innerHTML = htmlSelLoja;
 
-    let divCheckboxLojas = document.getElementById('modal-promotor-lojas');
-    let htmlCheckLojas = lojasDaRegiao.map(l => `<label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" class="check-nova-loja" value="${l}"> ${l}</label>`).join("");
-    divCheckboxLojas.innerHTML = htmlCheckLojas || "<i style='font-size:11px;'>Crie lojas primeiro.</i>";
+        let divCheckboxLojas = document.getElementById('modal-promotor-lojas');
+        let htmlCheckLojas = lojasDaRegiao.map(l => `<label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" class="check-nova-loja" value="${l}"> ${l}</label>`).join("");
+        divCheckboxLojas.innerHTML = htmlCheckLojas || "<i style='font-size:11px;'>Crie lojas primeiro.</i>";
+    } else {
+        divLojas.innerHTML = "<p style='font-size:13px; color:var(--cor-secundaria); font-style:italic;'>Para atribuir lojas a promotores órfãos, clique no botão de edição de lojas deles e escolha na lista geral.</p>";
+    }
     
     loadIcons();
 }
 
-function adminRemoverUsuarioModalEquipe(login) { if(confirm("Excluir promotor?")) { delete bancoUsuarios[login]; renderizarModalEquipe(); salvarConfiguracoesGlobais(false); mostrarToast("Promotor excluído. Salve na nuvem.", "info"); } }
+function adminRemoverUsuarioModalEquipe(login) { if(confirm("Excluir promotor?")) { delete bancoUsuarios[login]; renderizarAdminUsuarios(); renderizarModalEquipe(); salvarConfiguracoesGlobais(false); mostrarToast("Promotor excluído. Salve na nuvem.", "info"); } }
 function adminRemoverLoja(loja) { if(confirm("Excluir loja?")) { delete lojasConfig[loja]; for(let k in bancoUsuarios) { if(bancoUsuarios[k].lojasPermitidas) bancoUsuarios[k].lojasPermitidas = bancoUsuarios[k].lojasPermitidas.filter(l => l !== loja); } renderizarModalEquipe(); salvarConfiguracoesGlobais(false); mostrarToast("Loja excluída. Salve na nuvem.", "info"); } }
 function adminRemoverVendedor(loja, vend) { lojasConfig[loja].vendedores = lojasConfig[loja].vendedores.filter(v => v !== vend); renderizarModalEquipe(); salvarConfiguracoesGlobais(false); }
 
@@ -1712,9 +1852,10 @@ function adminAddPromotorEquipe() {
         estoque_editar: document.getElementById('perm-est-edit').checked
     };
 
-    let regiaoMae = (supervisorGerenciadoAtual === "master") ? "MATRIZ" : bancoUsuarios[supervisorGerenciadoAtual].regiao;
+    let supDaVez = (supervisorGerenciadoAtual === "orfaos") ? "master" : supervisorGerenciadoAtual;
+    let regiaoMae = bancoUsuarios[supDaVez] ? bancoUsuarios[supDaVez].regiao : "MATRIZ";
     
-    bancoUsuarios[l] = { nome: n, senha: s, cargo: "promotor", regiao: regiaoMae, meta: m, lojasPermitidas: lojasSelecionadas, criadoPor: supervisorGerenciadoAtual, permissoes: perm };
+    bancoUsuarios[l] = { nome: n, senha: s, cargo: "promotor", regiao: regiaoMae, meta: m, lojasPermitidas: lojasSelecionadas, criadoPor: supDaVez, permissoes: perm };
     
     document.getElementById('modal-promotor-login').value = ""; document.getElementById('modal-promotor-nome').value = ""; document.getElementById('modal-promotor-senha').value = ""; document.getElementById('modal-promotor-meta').value = "";
     renderizarModalEquipe(); salvarConfiguracoesGlobais(false); mostrarToast("Promotor criado com sucesso!", "sucesso");
@@ -1726,7 +1867,8 @@ function adminAddLojaEquipe() {
     if(!nome) return mostrarToast("Preencha o nome da loja", "alerta");
     if(lojasConfig[nome]) return mostrarToast("Loja já existe", "erro");
     
-    lojasConfig[nome] = { supervisor: supervisorGerenciadoAtual, capa: capa, vendedores: [] };
+    let supDaVez = (supervisorGerenciadoAtual === "orfaos") ? "master" : supervisorGerenciadoAtual;
+    lojasConfig[nome] = { supervisor: supDaVez, capa: capa, vendedores: [] };
     document.getElementById('modal-loja-nome').value = ""; document.getElementById('modal-loja-capa').value = "";
     renderizarModalEquipe(); salvarConfiguracoesGlobais(false); mostrarToast("Loja criada!", "sucesso");
 }
@@ -1737,7 +1879,8 @@ function adminAddVendedorEquipe() {
     if(!loja) return mostrarToast("Selecione uma loja", "alerta");
     if(!nomes) return mostrarToast("Preencha o nome do vendedor", "alerta");
     
-    if(!lojasConfig[loja]) lojasConfig[loja] = { supervisor: supervisorGerenciadoAtual, capa: 0, vendedores: [] };
+    let supDaVez = (supervisorGerenciadoAtual === "orfaos") ? "master" : supervisorGerenciadoAtual;
+    if(!lojasConfig[loja]) lojasConfig[loja] = { supervisor: supDaVez, capa: 0, vendedores: [] };
     if(!lojasConfig[loja].vendedores) lojasConfig[loja].vendedores = [];
     
     let arrayNomes = nomes.split(',').map(n => n.trim()).filter(n => n !== "");
