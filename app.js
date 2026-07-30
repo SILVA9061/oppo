@@ -121,7 +121,6 @@ window.onload = function() {
 
 function podeGerenciar(logado, alvoId) {
     if (!logado || !alvoId) return false;
-    // DEUS: Master e Gestor tem acesso livre a tudo
     if (logado.id === "master" || logado.cargo === "master" || logado.cargo === "gestor") return true;
     
     let alvo = bancoUsuarios[alvoId]; 
@@ -129,7 +128,11 @@ function podeGerenciar(logado, alvoId) {
 
     if (logado.cargo === "regional") {
         if (alvo.cargo === "supervisor") return (alvo.regiao === logado.regiao) || (alvo.criadoPor === logado.id);
-        if (alvo.cargo === "promotor") { let supDoPromotor = bancoUsuarios[alvo.criadoPor]; if (supDoPromotor && supDoPromotor.regiao === logado.regiao) return true; return alvo.regiao === logado.regiao; }
+        if (alvo.cargo === "promotor") { 
+            let supDoPromotor = bancoUsuarios[alvo.criadoPor]; 
+            if (supDoPromotor && supDoPromotor.regiao === logado.regiao) return true; 
+            return alvo.regiao === logado.regiao; 
+        }
         return false;
     }
     if (logado.cargo === "supervisor") return alvo.criadoPor === logado.id;
@@ -170,12 +173,7 @@ function verificarConferenciaEstoque() {
 function filtrarListaLojas(texto, containerId) { texto = texto.toLowerCase(); const labels = document.getElementById(containerId).querySelectorAll('label'); labels.forEach(lbl => { if (lbl.innerText.toLowerCase().includes(texto)) lbl.style.display = 'flex'; else lbl.style.display = 'none'; }); }
 function fecharModalEdicao() { document.getElementById('modal-edicao').classList.remove('ativo'); }
 
-// ================= MODAIS ADMIN (SISTEMA DEUS E CADASTROS) =================
-
-function obterRegioesUnicas() {
-    let regioes = Object.values(bancoUsuarios).map(u => u.regiao).filter(r => r && r.trim() !== "");
-    return [...new Set(regioes)].sort();
-}
+// --- MODAIS COM AUTO-SAVE NA NUVEM ---
 
 function adminAbrirModalCargo(login) {
     let u = bancoUsuarios[login];
@@ -220,6 +218,11 @@ function adminAbrirModalTransferir(login) {
         }
     };
     document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
+}
+
+function obterRegioesUnicas() {
+    let regioes = Object.values(bancoUsuarios).map(u => u.regiao).filter(r => r && r.trim() !== "");
+    return [...new Set(regioes)].sort();
 }
 
 function adminAbrirModalRegiao(login) {
@@ -280,6 +283,13 @@ function adminAbrirModalCapa(loja) {
     document.getElementById('btn-salvar-edicao').onclick = function() { let val = parseInt(document.getElementById('input-edicao-capa').value); lojasConfig[loja].capa = isNaN(val) ? 0 : val; renderizarModalEquipe(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Capa atualizada com sucesso!", "sucesso"); }; document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
 }
 
+function adminAbrirModalVendedor(loja, vendedorAtual) {
+    document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="user-edit"></i> Editar Vendedor`;
+    let html = `<label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Nome na loja ${loja}:</label><input type="text" id="input-edicao-vendedor" value="${vendedorAtual}" style="width: 100%; padding: 10px;">`;
+    document.getElementById('modal-edicao-corpo').innerHTML = html;
+    document.getElementById('btn-salvar-edicao').onclick = function() { let novoNome = document.getElementById('input-edicao-vendedor').value.trim(); if(novoNome !== "") { let index = lojasConfig[loja].vendedores.indexOf(vendedorAtual); if (index !== -1) { lojasConfig[loja].vendedores[index] = novoNome; renderizarModalEquipe(); } } fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Vendedor editado com sucesso!", "sucesso"); }; document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
+}
+
 function adminAbrirModalPermissoes(login) {
     let u = bancoUsuarios[login]; let p = u.permissoes || { vendas: true, acomp: true, estoque_ver: true, estoque_editar: true };
     document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="shield"></i> Permissões - @${login}`;
@@ -300,7 +310,7 @@ function adminAbrirModalPermissoes(login) {
 
 function getPromotorDaLoja(nomeLoja) { let promotores = []; for (let key in bancoUsuarios) { let u = bancoUsuarios[key]; if (u.cargo === "promotor" && u.lojasPermitidas.includes(nomeLoja)) { promotores.push(u.nome || (key.charAt(0).toUpperCase() + key.slice(1))); } } return promotores.length > 0 ? promotores.join(", ") : "Não Atribuído"; }
 
-// ================= NOTIFICAÇÕES (SINO) EM TEMPO REAL =================
+// ================= NOTIFICAÇÕES (SINO) EM TEMPO REAL COM VISUAL PREMIUM =================
 function inicializarNotificacoes() {
     let adminRole = (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master" || usuarioLogado.cargo === "supervisor");
     if (!adminRole) return;
@@ -309,10 +319,23 @@ function inicializarNotificacoes() {
     let sinoAntigo = document.getElementById('btn-sino-notificacao');
     if (sinoAntigo) sinoAntigo.remove();
 
+    // DESIGN PREMIUM DO SINO E ANIMAÇÕES
     let sinoHtml = `
-    <div id="btn-sino-notificacao" onclick="abrirModalNotificacoes()" style="position: absolute; top: 25px; left: 25px; cursor: pointer; z-index: 100; background: var(--bg-container); padding: 10px; border-radius: 50%; border: 1px solid var(--border-color); box-shadow: 0 2px 8px var(--shadow-color); transition: transform 0.2s;">
-        <i data-lucide="bell" style="margin:0; color: var(--cor-texto);"></i>
-        <span id="badge-sino" style="display:none; position:absolute; top:-5px; right:-5px; background:#dc3545; color:white; border-radius:50%; padding:2px 6px; font-size:11px; font-weight:bold; box-shadow: 0 1px 3px rgba(0,0,0,0.5);">0</span>
+    <style>
+        @keyframes sinoToca {
+            0% { transform: rotate(0); }
+            10% { transform: rotate(15deg); }
+            20% { transform: rotate(-10deg); }
+            30% { transform: rotate(5deg); }
+            40% { transform: rotate(-5deg); }
+            50% { transform: rotate(0); }
+            100% { transform: rotate(0); }
+        }
+        .sino-animado { animation: sinoToca 3s infinite; }
+    </style>
+    <div id="btn-sino-notificacao" onclick="abrirModalNotificacoes()" style="position: absolute; top: 20px; left: 20px; cursor: pointer; z-index: 100; background: linear-gradient(145deg, var(--bg-item), var(--bg-container)); padding: 12px; border-radius: 14px; border: 1px solid rgba(0, 134, 255, 0.3); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); transition: all 0.3s ease; display: flex; align-items: center; justify-content: center;">
+        <i data-lucide="bell" id="icone-sino-interno" style="margin:0; color: #0086ff; width: 22px; height: 22px;"></i>
+        <span id="badge-sino" style="display:none; position:absolute; top:-6px; right:-6px; background:#dc3545; color:white; border-radius:50%; padding:3px 7px; font-size:12px; font-weight:900; box-shadow: 0 2px 5px rgba(220,53,69,0.5); border: 2px solid var(--bg-fundo); animation: pulse 2s infinite;">0</span>
     </div>`;
     telaMenu.insertAdjacentHTML('afterbegin', sinoHtml);
 
@@ -378,12 +401,16 @@ function processarNotificacoes(dados) {
     });
 
     let badge = document.getElementById('badge-sino');
+    let iconeSino = document.getElementById('icone-sino-interno');
+    
     if (badge) {
         if (notificacoes.length > 0) {
             badge.innerText = notificacoes.length;
             badge.style.display = 'flex';
+            if(iconeSino) iconeSino.classList.add('sino-animado');
         } else {
             badge.style.display = 'none';
+            if(iconeSino) iconeSino.classList.remove('sino-animado');
         }
     }
     
@@ -615,34 +642,16 @@ function renderizarFiltroPromotores() {
     let html = `<div class="card-promotor-filtro ${promotorFiltroAtual === 'todos' ? 'ativo' : ''}" onclick="setFiltroPromotor('todos')"><i data-lucide="layout-dashboard" class="lucide-sm"></i> Visão Geral (Todas)</div>`;
     
     if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") {
-        for (let key in bancoUsuarios) {
-            let u = bancoUsuarios[key];
-            let isSupervisor = (u.cargo === "supervisor" || u.cargo === "gestor" || u.cargo === "regional" || key === "master");
-            if (isSupervisor) {
-                let temEquipe = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === key);
-                if (temEquipe && podeGerenciar(usuarioLogado, key)) {
-                    html += `<div class="card-promotor-filtro ${promotorFiltroAtual === key ? 'ativo' : ''}" onclick="setFiltroPromotor('${key}')"><i data-lucide="users" class="lucide-sm"></i> Equipe ${u.nome || key}</div>`;
+        for (let key in bancoUsuarios) { 
+            if (bancoUsuarios[key].cargo === "supervisor") {
+                if(podeGerenciar(usuarioLogado, key)) {
+                    html += `<div class="card-promotor-filtro ${promotorFiltroAtual === key ? 'ativo' : ''}" onclick="setFiltroPromotor('${key}')"><i data-lucide="users" class="lucide-sm"></i> Equipe ${bancoUsuarios[key].nome || key}</div>`; 
                 }
-            }
+            } 
         }
-        
-        let temOrfaos = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && (!bancoUsuarios[k].criadoPor || !bancoUsuarios[bancoUsuarios[k].criadoPor]));
-        if (temOrfaos) {
-            html += `<div class="card-promotor-filtro ${promotorFiltroAtual === 'orfaos' ? 'ativo' : ''}" onclick="setFiltroPromotor('orfaos')" style="border-color:#ffc107; color:#856404;"><i data-lucide="alert-triangle" class="lucide-sm"></i> Órfãos</div>`;
-        }
-
-        if (promotorFiltroAtual !== 'todos') {
+        if (promotorFiltroAtual !== 'todos' && bancoUsuarios[promotorFiltroAtual]) {
             let htmlSub = `<div class="card-promotor-filtro ${subPromotorFiltroAtual === 'todos' ? 'ativo' : ''}" style="${subPromotorFiltroAtual === 'todos' ? 'background-color: #17a2b8; border-color: #17a2b8; color: white;' : 'background-color: var(--bg-item); color: var(--cor-secundaria); border-color: var(--border-color);'}" onclick="setSubFiltroPromotor('todos')"><i data-lucide="users" class="lucide-sm"></i> Todas (Equipe)</div>`;
-            for (let key in bancoUsuarios) { 
-                let u = bancoUsuarios[key];
-                if (u.cargo === "promotor") {
-                    let pertence = (promotorFiltroAtual === 'orfaos') ? (!u.criadoPor || !bancoUsuarios[u.criadoPor]) : (u.criadoPor === promotorFiltroAtual);
-                    if (pertence) {
-                        let isAt = subPromotorFiltroAtual === key; 
-                        htmlSub += `<div class="card-promotor-filtro ${isAt ? 'ativo' : ''}" style="${isAt ? 'background-color: #17a2b8; border-color: #17a2b8; color: white;' : 'background-color: var(--bg-item); color: var(--cor-secundaria); border-color: var(--border-color);'}" onclick="setSubFiltroPromotor('${key}')"><i data-lucide="user" class="lucide-sm"></i> ${u.nome || key}</div>`;
-                    }
-                }
-            }
+            for (let key in bancoUsuarios) { if (bancoUsuarios[key].cargo === "promotor" && bancoUsuarios[key].criadoPor === promotorFiltroAtual) { let isAt = subPromotorFiltroAtual === key; htmlSub += `<div class="card-promotor-filtro ${isAt ? 'ativo' : ''}" style="${isAt ? 'background-color: #17a2b8; border-color: #17a2b8; color: white;' : 'background-color: var(--bg-item); color: var(--cor-secundaria); border-color: var(--border-color);'}" onclick="setSubFiltroPromotor('${key}')"><i data-lucide="user" class="lucide-sm"></i> ${bancoUsuarios[key].nome || key}</div>`; } }
             if(divSub) { divSub.innerHTML = htmlSub; divSub.style.display = "flex"; }
         } else { if(divSub) divSub.style.display = "none"; }
     } else if (usuarioLogado.cargo === "supervisor") {
@@ -742,7 +751,7 @@ function renderizarListaAcompanhamento() {
     } div.innerHTML = html; loadIcons();
 }
 
-// ================= ESTOQUE E MOSTRUÁRIO ================= //
+// ================= FUNÇÕES DO ESTOQUE E MOSTRUÁRIO ================= //
 
 function fecharModalConfirmMostruario() { document.getElementById('modal-confirm-mostruario').classList.remove('ativo'); mostruarioEmEdicao = null; }
 function fecharModalPromptMostruario() { document.getElementById('modal-prompt-mostruario').classList.remove('ativo'); mostruarioEmEdicao = null; }
