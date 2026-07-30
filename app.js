@@ -1,13 +1,14 @@
 // URL DA SUA API DO GOOGLE APPS SCRIPT
 const URL_DA_SUA_API = "https://script.google.com/macros/s/AKfycbzg7zvtitqzNtB7ghbZ-zg0-W3fTrkAswlORizvAfyPETdbHivMRqvJyrfTEZ36WuXGPQ/exec";
 
-// HELPER GLOBAL - Blinda o sistema contra erros de nome de colunas
+// HELPER GLOBAL - Blinda o sistema contra erros de nome de colunas do Google Sheets
 const getVal = (obj, possiveisNomes) => {
     if (!obj) return "";
     let chave = Object.keys(obj).find(k => possiveisNomes.includes(k.toLowerCase().trim()));
     return chave ? String(obj[chave]).trim() : "";
 };
 
+// GERADOR DE FURA-CACHE - Garante que o navegador sempre baixe os dados novos
 const noCache = () => "&_t=" + new Date().getTime();
 
 let bancoUsuarios = {}; let lojasConfig = {}; let mapaEmojis = {};
@@ -23,6 +24,7 @@ let vendedoresSelecionados = [];
 
 window.addEventListener('online', sincronizarFilaOffline);
 
+// ================= MELHORIAS DE UX (FECHAR MODAL E CACHE) =================
 window.addEventListener('click', function(e) {
     if (e.target.classList.contains('modal-overlay')) {
         e.target.classList.remove('ativo');
@@ -43,24 +45,22 @@ window.addEventListener('keydown', function(e) {
     }
 });
 
+// NOVA FUNÇÃO: Limpa o Cache e força a atualização do sistema
 function limparCacheERecarregar() {
     let btn = document.getElementById('btn-limpar-cache');
-    if(btn) btn.innerHTML = '<i data-lucide="loader-2" class="lucide-sm" style="animation: spin 2s linear infinite;"></i> Destruindo Cache...';
+    if(btn) btn.innerHTML = '<i data-lucide="loader-2" class="lucide-sm" style="animation: spin 2s linear infinite;"></i> Atualizando...';
     loadIcons();
     
     localStorage.clear();
     sessionStorage.clear();
-    
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(registrations) {
-            for(let registration of registrations) { registration.unregister(); }
-        });
-    }
-    
     mostrarToast("Memória limpa! Reiniciando sistema...", "info");
-    setTimeout(() => { window.location.href = window.location.pathname + "?v=" + new Date().getTime(); }, 1500);
+    
+    setTimeout(() => {
+        window.location.href = window.location.pathname + "?v=" + new Date().getTime();
+    }, 1200);
 }
 
+// INJETA BOTÃO DE VOLTAR FLUTUANTE GLOBAL
 function injetarBotaoVoltar() {
     if (document.getElementById('btn-voltar-flutuante')) return;
     document.body.insertAdjacentHTML('beforeend', `
@@ -75,6 +75,7 @@ function injetarBotaoVoltar() {
     loadIcons();
 }
 
+// LÓGICA INTELIGENTE DE ROTAS (VOLTAR)
 function clicouVoltarFlutuante() {
     let tela = document.querySelector('.tela.ativa');
     if(!tela) return mudarTela('tela-menu');
@@ -82,7 +83,11 @@ function clicouVoltarFlutuante() {
 
     if (id === 'tela-venda') {
         let btnTrocar = document.getElementById('btn-trocar-loja');
-        if (btnTrocar && btnTrocar.style.display !== 'none') { btnTrocar.click(); } else { mudarTela('tela-menu'); }
+        if (btnTrocar && btnTrocar.style.display !== 'none') {
+            btnTrocar.click();
+        } else {
+            mudarTela('tela-menu');
+        }
     } else if (id === 'tela-lojas') {
         voltarDeLojas();
     } else if (id === 'tela-promotores') {
@@ -106,9 +111,7 @@ function toggleTema() {
     if(iconTemaMenu) { iconTemaMenu.setAttribute('data-lucide', isDark ? 'sun' : 'moon'); }
     
     loadIcons();
-    if (document.getElementById('tela-dashboard').classList.contains('ativa')) {
-        if (dadosAcompanhamentoGlobal.length > 0) gerarGraficosDash(dadosAcompanhamentoGlobal);
-    }
+    if (document.getElementById('tela-dashboard').classList.contains('ativa')) abrirDashboard();
 }
 
 function mudarTela(idTela) { 
@@ -142,7 +145,7 @@ function switchTab(tabId, groupClass) {
 
 if(localStorage.getItem('temaEscuro') === 'sim') { document.body.classList.add('dark-mode'); document.getElementById('btn-tema').innerHTML = '<i data-lucide="sun"></i>'; }
 
-function inicializarSistema() {
+window.onload = function() {
     loadIcons();
     injetarBotaoVoltar();
     
@@ -164,7 +167,6 @@ function inicializarSistema() {
         }
     }, 8000);
 
-    // REMOVIDA A TRAVA DE SEGURANÇA (credentials/cache) QUE BLOQUEAVA O GOOGLE APPS SCRIPT
     fetch(URL_DA_SUA_API + "?acao=config" + noCache())
     .then(r => { if (!r.ok) throw new Error("Erro na rede"); return r.json(); })
     .then(res => {
@@ -188,17 +190,16 @@ function inicializarSistema() {
         bancoUsuarios["master"] = { nome: "Diretor Master", senha: "Silva_9061", cargo: "master", meta: 0, lojasPermitidas: [] };
         document.getElementById('tela-loading').style.display = 'none'; mudarTela('tela-login'); setTimeout(sincronizarFilaOffline, 2000);
     }).catch(err => {
-        clearTimeout(tempoEsgotado); console.error("Erro na inicialização:", err);
+        clearTimeout(tempoEsgotado); console.error("Erro no onload:", err);
         bancoUsuarios["master"] = { nome: "Diretor Master", senha: "Silva_9061", cargo: "master", meta: 0, lojasPermitidas: [] };
         document.getElementById('tela-loading').style.display = 'none'; mudarTela('tela-login');
-        mostrarToast("Iniciando no modo de segurança.", "info");
+        mostrarToast("Erro ao conectar na nuvem. Usando modo offline.", "erro");
     });
-}
-setTimeout(inicializarSistema, 200);
+};
 
 function podeGerenciar(logado, alvoId) {
     if (!logado || !alvoId) return false;
-    if (logado.id === "master" || logado.cargo === "master" || logado.cargo === "gestor" || logado.id === alvoId) return true;
+    if (logado.id === "master" || logado.cargo === "master" || logado.cargo === "gestor") return true;
     
     let alvo = bancoUsuarios[alvoId]; 
     if (!alvo) return false;
@@ -218,22 +219,6 @@ function podeGerenciar(logado, alvoId) {
         return false;
     }
     if (logado.cargo === "supervisor") return alvo.criadoPor === logado.id;
-    return false;
-}
-
-function promotorPertenceAoGestor(idPromotor, idGestorFiltro) {
-    if (idGestorFiltro === "todos") return true;
-    let u = bancoUsuarios[idPromotor];
-    if (!u) return false;
-    if (idGestorFiltro === "orfaos") return (!u.criadoPor || !bancoUsuarios[u.criadoPor]);
-    if (u.criadoPor === idGestorFiltro) return true;
-    
-    let gestorFiltroObj = bancoUsuarios[idGestorFiltro];
-    if (gestorFiltroObj) {
-        let fakeLogado = Object.assign({id: idGestorFiltro}, gestorFiltroObj);
-        return podeGerenciar(fakeLogado, idPromotor);
-    }
-    
     return false;
 }
 
@@ -271,7 +256,250 @@ function verificarConferenciaEstoque() {
 function filtrarListaLojas(texto, containerId) { texto = texto.toLowerCase(); const labels = document.getElementById(containerId).querySelectorAll('label'); labels.forEach(lbl => { if (lbl.innerText.toLowerCase().includes(texto)) lbl.style.display = 'flex'; else lbl.style.display = 'none'; }); }
 function fecharModalEdicao() { document.getElementById('modal-edicao').classList.remove('ativo'); }
 
-// ================= NOTIFICAÇÕES (SINO) =================
+// ================= MODAIS ADMIN E CADASTROS =================
+
+function obterRegioesUnicas() {
+    let regioes = Object.values(bancoUsuarios).map(u => u.regiao).filter(r => r && r.trim() !== "");
+    return [...new Set(regioes)].sort();
+}
+
+function adminAbrirModalCargo(login) {
+    let u = bancoUsuarios[login];
+    document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="briefcase"></i> Alterar Cargo`;
+    let html = `<label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Novo cargo para <b>@${login}</b>:</label>
+                <select id="input-edicao-cargo" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--cor-texto);">
+                    <option value="promotor" ${u.cargo==='promotor'?'selected':''}>Promotor de Vendas</option>
+                    <option value="supervisor" ${u.cargo==='supervisor'?'selected':''}>Supervisor de Equipe</option>
+                    <option value="regional" ${u.cargo==='regional'?'selected':''}>Gestor Regional</option>
+                    <option value="gestor" ${u.cargo==='gestor'?'selected':''}>Diretor / Master</option>
+                </select>`;
+    document.getElementById('modal-edicao-corpo').innerHTML = html;
+    document.getElementById('btn-salvar-edicao').onclick = function() {
+        let novoCargo = document.getElementById('input-edicao-cargo').value;
+        bancoUsuarios[login].cargo = novoCargo;
+        if(novoCargo === 'supervisor' && !u.criadoPor) u.criadoPor = usuarioLogado.id;
+        renderizarAdminUsuarios(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Cargo alterado e salvo na nuvem!", "sucesso");
+    };
+    document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
+}
+
+function adminAbrirModalTransferir(login) {
+    let u = bancoUsuarios[login];
+    document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="arrow-right-left"></i> Transferir Equipe`;
+    let options = "";
+    for(let k in bancoUsuarios) {
+        if(bancoUsuarios[k].cargo === "supervisor" || bancoUsuarios[k].cargo === "master" || bancoUsuarios[k].cargo === "gestor" || bancoUsuarios[k].cargo === "regional") {
+            let selected = (u.criadoPor === k) ? "selected" : "";
+            options += `<option value="${k}" ${selected}>Equipe: ${bancoUsuarios[k].nome || k}</option>`;
+        }
+    }
+    let html = `<label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Mover o promotor <b>${u.nome || login}</b> para:</label>
+                <select id="input-edicao-transferir" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--cor-texto);">${options}</select>`;
+    document.getElementById('modal-edicao-corpo').innerHTML = html;
+    document.getElementById('btn-salvar-edicao').onclick = function() {
+        let novoSup = document.getElementById('input-edicao-transferir').value;
+        if(novoSup) {
+            bancoUsuarios[login].criadoPor = novoSup;
+            if(bancoUsuarios[novoSup].regiao) bancoUsuarios[login].regiao = bancoUsuarios[novoSup].regiao;
+            renderizarAdminUsuarios();
+            renderizarModalEquipe(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Promotor transferido de equipe!", "sucesso");
+        }
+    };
+    document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
+}
+
+function adminAbrirModalRegiao(login) {
+    let u = bancoUsuarios[login]; document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="globe"></i> Região - @${login}`;
+    let datalistHtml = `<datalist id="lista-regioes">${obterRegioesUnicas().map(r => `<option value="${r}">`).join('')}</datalist>`;
+    let html = `${datalistHtml}
+                <label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Região (Escolha ou Digite nova):</label>
+                <input type="text" id="input-edicao-regiao" list="lista-regioes" value="${u.regiao || ''}" style="width: 100%; padding: 10px; text-transform: uppercase;">`;
+    document.getElementById('modal-edicao-corpo').innerHTML = html;
+    document.getElementById('btn-salvar-edicao').onclick = function() {
+        let nova = document.getElementById('input-edicao-regiao').value.trim().toUpperCase(); bancoUsuarios[login].regiao = nova; renderizarAdminUsuarios(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Região alterada com sucesso!", "sucesso");
+    };
+    document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
+}
+
+function adminAbrirModalLojas(login) {
+    let u = bancoUsuarios[login]; document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="store"></i> Lojas - ${u.nome || login}`;
+    let html = `<input type="text" class="input-busca-loja" placeholder="Pesquisar loja..." onkeyup="filtrarListaLojas(this.value, 'edicao-lojas-container')" style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--cor-texto);"><div id="edicao-lojas-container" style="max-height: 180px; overflow-y: auto; text-align: left;">`;
+    
+    let lojasOrdenadas = [];
+    if (usuarioLogado.cargo === "master" || usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional") {
+        lojasOrdenadas = Object.keys(lojasConfig).sort((a,b) => a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'}));
+    } else {
+        lojasOrdenadas = getLojasDaRegiao(u.criadoPor);
+    }
+
+    if(lojasOrdenadas.length === 0) { html += "<p style='color:var(--cor-secundaria); font-size:13px;'>Nenhuma loja encontrada.</p>"; } 
+    else { lojasOrdenadas.forEach(loja => { let isChecked = u.lojasPermitidas.includes(loja) ? "checked" : ""; html += `<label style="display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid var(--border-color); padding-bottom: 6px; margin-bottom: 6px; font-size: 14px;"><input type="checkbox" class="check-edicao-loja" value="${loja}" ${isChecked}> ${loja}</label>`; }); }
+    html += `</div>`; document.getElementById('modal-edicao-corpo').innerHTML = html;
+    document.getElementById('btn-salvar-edicao').onclick = function() { let selecionadas = Array.from(document.querySelectorAll('.check-edicao-loja:checked')).map(cb => cb.value); bancoUsuarios[login].lojasPermitidas = selecionadas; renderizarModalEquipe(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Lojas alteradas com sucesso!", "sucesso"); }; document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
+}
+
+function adminAbrirModalSenha(login) {
+    let u = bancoUsuarios[login]; document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="key"></i> Senha - ${u.nome || login}`;
+    let html = `<label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Nova Senha:</label><input type="text" id="input-edicao-senha" placeholder="Digite a nova senha" style="width: 100%; padding: 10px;">`;
+    document.getElementById('modal-edicao-corpo').innerHTML = html;
+    document.getElementById('btn-salvar-edicao').onclick = function() { let nova = document.getElementById('input-edicao-senha').value.trim(); if(nova.length < 3) return mostrarToast("Mínimo 3 caracteres.", "alerta"); bancoUsuarios[login].senha = nova; renderizarAdminUsuarios(); renderizarModalEquipe(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast(`Senha alterada com sucesso!`, "sucesso"); }; document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
+}
+
+function adminAbrirModalMeta(login) {
+    let u = bancoUsuarios[login]; document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="target"></i> Meta - ${u.nome || login}`;
+    let html = `<label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Meta Individual (unidades):</label><input type="number" id="input-edicao-meta" value="${u.meta || 0}" style="width: 100%; padding: 10px;">`;
+    document.getElementById('modal-edicao-corpo').innerHTML = html;
+    document.getElementById('btn-salvar-edicao').onclick = function() { let val = parseInt(document.getElementById('input-edicao-meta').value); bancoUsuarios[login].meta = isNaN(val) ? 0 : val; renderizarModalEquipe(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Meta atualizada com sucesso!", "sucesso"); }; document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
+}
+
+function adminAbrirModalNome(login) {
+    let u = bancoUsuarios[login]; document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="edit-3"></i> Nome - @${login}`;
+    let html = `<label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Novo Nome:</label><input type="text" id="input-edicao-nome" value="${u.nome || ''}" style="width: 100%; padding: 10px;">`;
+    document.getElementById('modal-edicao-corpo').innerHTML = html;
+    document.getElementById('btn-salvar-edicao').onclick = function() { let novo = document.getElementById('input-edicao-nome').value.trim(); if(novo.length < 2) return mostrarToast("Nome muito curto.", "alerta"); bancoUsuarios[login].nome = novo; renderizarAdminUsuarios(); renderizarModalEquipe(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast(`Nome alterado com sucesso!`, "sucesso"); }; document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
+}
+
+function adminAbrirModalCapa(loja) {
+    document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="layers"></i> Editar Capa Total`;
+    let html = `<label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Capa da loja ${loja}:</label><input type="number" id="input-edicao-capa" value="${lojasConfig[loja].capa || 0}" style="width: 100%; padding: 10px;">`;
+    document.getElementById('modal-edicao-corpo').innerHTML = html;
+    document.getElementById('btn-salvar-edicao').onclick = function() { let val = parseInt(document.getElementById('input-edicao-capa').value); lojasConfig[loja].capa = isNaN(val) ? 0 : val; renderizarModalEquipe(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Capa atualizada com sucesso!", "sucesso"); }; document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
+}
+
+function adminAbrirModalVendedor(loja, vendedorAtual) {
+    document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="user-edit"></i> Editar Vendedor`;
+    let html = `<label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Nome na loja ${loja}:</label><input type="text" id="input-edicao-vendedor" value="${vendedorAtual}" style="width: 100%; padding: 10px;">`;
+    document.getElementById('modal-edicao-corpo').innerHTML = html;
+    document.getElementById('btn-salvar-edicao').onclick = function() { let novoNome = document.getElementById('input-edicao-vendedor').value.trim(); if(novoNome !== "") { let index = lojasConfig[loja].vendedores.indexOf(vendedorAtual); if (index !== -1) { lojasConfig[loja].vendedores[index] = novoNome; renderizarModalEquipe(); } } fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Vendedor editado com sucesso!", "sucesso"); }; document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
+}
+
+function adminAbrirModalPermissoes(login) {
+    let u = bancoUsuarios[login]; let p = u.permissoes || { vendas: true, acomp: true, estoque_ver: true, estoque_editar: true };
+    document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="shield"></i> Permissões - @${login}`;
+    let html = `
+        <div style="display: flex; flex-direction: column; gap: 12px; text-align: left;">
+            <label style="cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 14px;"><input type="checkbox" id="edit-perm-vendas" ${p.vendas ? "checked" : ""}> Lançar Vendas</label>
+            <label style="cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 14px;"><input type="checkbox" id="edit-perm-acomp" ${p.acomp ? "checked" : ""}> Ver Acompanhamento</label>
+            <label style="cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 14px;"><input type="checkbox" id="edit-perm-est-ver" ${p.estoque_ver ? "checked" : ""}> Acessar Tela Estoque</label>
+            <label style="cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 14px;"><input type="checkbox" id="edit-perm-est-edit" ${p.estoque_editar ? "checked" : ""}> Editar/Auditar Estoque</label>
+        </div>`;
+    document.getElementById('modal-edicao-corpo').innerHTML = html;
+    document.getElementById('btn-salvar-edicao').onclick = function() { 
+        bancoUsuarios[login].permissoes = { vendas: document.getElementById('edit-perm-vendas').checked, acomp: document.getElementById('edit-perm-acomp').checked, estoque_ver: document.getElementById('edit-perm-est-ver').checked, estoque_editar: document.getElementById('edit-perm-est-edit').checked };
+        renderizarModalEquipe(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast(`Permissões atualizadas com sucesso!`, "sucesso"); 
+    }; 
+    document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
+}
+
+function getPromotorDaLoja(nomeLoja) { let promotores = []; for (let key in bancoUsuarios) { let u = bancoUsuarios[key]; if (u.cargo === "promotor" && u.lojasPermitidas.includes(nomeLoja)) { promotores.push(u.nome || (key.charAt(0).toUpperCase() + key.slice(1))); } } return promotores.length > 0 ? promotores.join(", ") : "Não Atribuído"; }
+
+// ================= MENU NOVO E NOTIFICAÇÕES (SINO) =================
+
+function renderizarMenuPrincipal() {
+    let menuDiv = document.getElementById('tela-menu');
+    
+    let btnTemaGlobal = document.getElementById('btn-tema');
+    if (btnTemaGlobal) btnTemaGlobal.style.display = 'none';
+
+    let adminRole = (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master" || usuarioLogado.cargo === "supervisor");
+    let perm = usuarioLogado.permissoes || { vendas: true, acomp: true, estoque_ver: true, estoque_editar: true };
+
+    let nomeUser = (usuarioLogado.nome || "").split(" ")[0];
+    let cargoTexto = usuarioLogado.id === "master" ? "👑 Diretor Master" : (usuarioLogado.cargo === "gestor" ? "👔 Gestor Geral" : (usuarioLogado.cargo === "regional" ? "🌎 Gestor Regional" : (usuarioLogado.cargo === "supervisor" ? "📍 Supervisor" : "📱 Promotor")));
+
+    let html = `
+    <style>
+        .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 25px; margin-bottom: 30px; }
+        .menu-card { background: var(--bg-item); border: 1px solid var(--border-color); border-radius: 16px; padding: 22px 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 4px 10px rgba(0,0,0,0.02); }
+        .menu-card:hover { transform: translateY(-3px); box-shadow: 0 8px 15px var(--shadow-color); border-color: #0086ff; }
+        .menu-card:active { transform: scale(0.96); }
+        .icon-wrapper { width: 50px; height: 50px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 5px; transition: all 0.3s; }
+        .card-title { font-size: 14px; font-weight: 700; color: var(--cor-texto); text-align: center; line-height: 1.2; letter-spacing: -0.2px;}
+        .sino-btn { position: relative; background: var(--bg-item); border: 1px solid var(--border-color); border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.05); transition: background 0.2s; }
+        .sino-btn:hover { background: var(--bg-card); }
+        @keyframes sinoToca {
+            0% { transform: rotate(0); }
+            10% { transform: rotate(15deg); }
+            20% { transform: rotate(-10deg); }
+            30% { transform: rotate(5deg); }
+            40% { transform: rotate(-5deg); }
+            50% { transform: rotate(0); }
+            100% { transform: rotate(0); }
+        }
+        .sino-animado { animation: sinoToca 2s infinite; }
+    </style>
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; text-align: left; margin-bottom: 10px; padding-bottom: 15px; border-bottom: 1px solid var(--bg-item);">
+        <div>
+            <h2 style="margin: 0 0 6px 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">Fala, ${nomeUser}!</h2>
+            <span style="font-size: 12px; font-weight: 700; color: #0086ff; background: rgba(0, 134, 255, 0.1); padding: 4px 10px; border-radius: 12px;">${cargoTexto}</span>
+        </div>
+        <div style="display: flex; gap: 12px; align-items: center;">
+            ${adminRole ? `
+            <div class="sino-btn" onclick="abrirModalNotificacoes()">
+                <i data-lucide="bell" id="icone-sino-interno" style="color: var(--cor-texto); width: 22px; height: 22px; margin:0;"></i>
+                <span id="badge-sino" style="display:none; position:absolute; top:-4px; right:-4px; background:#dc3545; color:white; border-radius:50%; width:18px; height:18px; font-size:10px; font-weight:900; align-items:center; justify-content:center; border: 2px solid var(--bg-container); box-shadow: 0 2px 4px rgba(220,53,69,0.4);">0</span>
+            </div>` : ''}
+            <div class="sino-btn" onclick="toggleTema()">
+                <i data-lucide="moon" id="icone-tema-menu" style="color: var(--cor-texto); width: 22px; height: 22px; margin:0;"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="menu-grid">`;
+
+    if (adminRole || perm.vendas) {
+        html += `<div class="menu-card" onclick="irParaVendas()">
+            <div class="icon-wrapper" style="background: rgba(0, 134, 255, 0.15); color: #0086ff;"><i data-lucide="shopping-bag" style="width:26px; height:26px; margin:0;"></i></div>
+            <span class="card-title">Lançar<br>Venda</span>
+        </div>`;
+    }
+    if (adminRole || perm.acomp) {
+        html += `<div class="menu-card" onclick="abrirAcompanhamento()">
+            <div class="icon-wrapper" style="background: rgba(23, 162, 184, 0.15); color: #17a2b8;"><i data-lucide="bar-chart-2" style="width:26px; height:26px; margin:0;"></i></div>
+            <span class="card-title">Acompanhar<br>Vendas</span>
+        </div>`;
+    }
+    if (adminRole || perm.estoque_ver) {
+        html += `<div class="menu-card" style="position:relative;" onclick="abrirEstoque()">
+            <div class="icon-wrapper" style="background: rgba(111, 66, 193, 0.15); color: #6f42c1;"><i data-lucide="package" style="width:26px; height:26px; margin:0;"></i></div>
+            <span class="card-title">Controle de<br>Estoque</span>
+            <span id="badge-estoque" style="position:absolute; top: -5px; right: -5px; background-color:#ff9800; color: white; width:20px; height:20px; display:none; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; border-radius:50%; box-shadow: 0 2px 5px rgba(255,152,0,0.4); border: 2px solid var(--bg-item);">!</span>
+        </div>`;
+    }
+    if (adminRole) {
+        html += `<div class="menu-card" onclick="abrirHistorico('geral')">
+            <div class="icon-wrapper" style="background: rgba(108, 117, 125, 0.15); color: #6c757d;"><i data-lucide="clock" style="width:26px; height:26px; margin:0;"></i></div>
+            <span class="card-title">Histórico<br>da Equipe</span>
+        </div>`;
+        html += `<div class="menu-card" onclick="abrirHistorico('estoque')">
+            <div class="icon-wrapper" style="background: rgba(255, 152, 0, 0.15); color: #ff9800;"><i data-lucide="search" style="width:26px; height:26px; margin:0;"></i></div>
+            <span class="card-title">Auditoria<br>de Estoque</span>
+        </div>`;
+        html += `<div class="menu-card" onclick="abrirDashboard()">
+            <div class="icon-wrapper" style="background: rgba(40, 167, 69, 0.15); color: #28a745;"><i data-lucide="pie-chart" style="width:26px; height:26px; margin:0;"></i></div>
+            <span class="card-title">Dashboard<br>& Metas</span>
+        </div>`;
+        html += `<div class="menu-card" onclick="abrirAdmin()">
+            <div class="icon-wrapper" style="background: rgba(52, 58, 64, 0.15); color: var(--cor-texto);"><i data-lucide="settings" style="width:26px; height:26px; margin:0;"></i></div>
+            <span class="card-title">Ajustes da<br>Empresa</span>
+        </div>`;
+    }
+
+    html += `</div>
+    <button class="btn-sistema btn-voltar" style="border-radius: 12px; font-size: 15px; background: transparent; border: 2px solid var(--border-color); color: var(--cor-texto); box-shadow: none;" onclick="fazerLogout()"><i data-lucide="log-out"></i> Encerrar Sessão</button>`;
+
+    menuDiv.innerHTML = html;
+    
+    let isDark = document.body.classList.contains('dark-mode');
+    let iconTema = document.getElementById('icone-tema-menu');
+    if(iconTema) iconTema.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+
+    loadIcons();
+    verificarConferenciaEstoque();
+    if (adminRole) inicializarNotificacoes();
+}
+
 function inicializarNotificacoes() {
     let modalAntigo = document.getElementById('modal-notificacoes');
     if (modalAntigo) modalAntigo.remove();
@@ -294,7 +522,7 @@ function inicializarNotificacoes() {
 }
 
 function carregarNotificacoesSilencioso() {
-    fetch(URL_DA_SUA_API + "?acao=historico&limit=150" + noCache())
+    fetch(URL_DA_SUA_API + "?acao=historico&limit=150&_t=" + new Date().getTime())
     .then(r => r.json())
     .then(res => {
         if (res.status === "sucesso") {
@@ -310,9 +538,15 @@ function processarNotificacoes(dados) {
 
     dados.forEach(row => {
         let pLogin = getVal(row, ['promotor', 'usuario', 'login']);
+        let pObj = bancoUsuarios[pLogin];
         
         if (pLogin === usuarioLogado.id || pLogin === "Sistema") return;
-        if (!podeGerenciar(usuarioLogado, pLogin)) return;
+
+        if (usuarioLogado.cargo === "supervisor") {
+            if (!pObj || pObj.criadoPor !== usuarioLogado.id) return;
+        } else if (usuarioLogado.cargo !== "master" && usuarioLogado.cargo !== "gestor") {
+            if (!podeGerenciar(usuarioLogado, pLogin)) return;
+        }
 
         let rawData = getVal(row, ['datahora', 'data', 'timestamp', 'carimbo']);
         let isHoje = false;
@@ -387,27 +621,23 @@ function fecharModalNotificacoes() { document.getElementById('modal-notificacoes
 
 function irParaNotificacao(tipo, promotorLogin) {
     fecharModalNotificacoes();
-    let btnFiltroSupHist = document.getElementById('filtro-sup-historico');
-    if (btnFiltroSupHist) btnFiltroSupHist.value = "todos"; 
     
-    if (typeof mudouSupHistorico === "function") mudouSupHistorico(); 
+    document.getElementById('filtro-sup-historico').value = "todos"; 
+    mudouSupHistorico(); 
 
     setTimeout(() => {
-        let btnFiltroPromHist = document.getElementById('filtro-promotor-historico');
-        if (btnFiltroPromHist) btnFiltroPromHist.value = promotorLogin;
+        document.getElementById('filtro-promotor-historico').value = promotorLogin;
         
         let hojeStr = new Date().toISOString().split("T")[0];
-        let dIni = document.getElementById('filtro-data-inicio-historico');
-        let dFim = document.getElementById('filtro-data-fim-historico');
-        if(dIni) dIni.value = hojeStr;
-        if(dFim) dFim.value = hojeStr;
+        document.getElementById('filtro-data-inicio-historico').value = hojeStr;
+        document.getElementById('filtro-data-fim-historico').value = hojeStr;
         
         abrirHistorico(tipo);
-        if (typeof aplicarFiltroHistorico === "function") aplicarFiltroHistorico(); 
+        aplicarFiltroHistorico(); 
     }, 150);
 }
 
-// ================= LOGIN =================
+// ================= LOGIN E ACESSO BLINDADO =================
 function realizarLogin() {
     const btn = document.getElementById("btn-login"); 
     btn.disabled = true; 
@@ -419,6 +649,7 @@ function realizarLogin() {
             const usuarioDigitado = document.getElementById('nome-usuario').value.trim().toLowerCase(); 
             const senhaDigitada = document.getElementById('senha-usuario').value.trim();
             
+            // Força a criação do Master na memória caso a rede tenha falhado
             if (usuarioDigitado === "master") {
                 bancoUsuarios["master"] = { nome: "Diretor Master", senha: "Silva_9061", cargo: "master", meta: 0, lojasPermitidas: [] };
             }
@@ -474,14 +705,9 @@ function fazerLogout() {
     usuarioLogado = null; 
     let btnTemaGlobal = document.getElementById('btn-tema');
     if (btnTemaGlobal) btnTemaGlobal.style.display = 'block';
-    
-    let btnVoltar = document.getElementById('btn-voltar-flutuante');
-    if(btnVoltar) btnVoltar.style.display = 'none';
-    
     mudarTela('tela-login'); 
 }
 
-// ================= VENDAS E ESTOQUE =================
 function irParaVendas() {
     if (usuarioLogado.cargo === "master" || usuarioLogado.cargo === "gestor") {
         montarBotoesLojas(Object.keys(lojasConfig)); 
@@ -567,8 +793,6 @@ async function sincronizarFilaOffline() {
     for (let item of copiaFila) { try { await fetch(URL_DA_SUA_API, { method: "POST", body: JSON.stringify(item.payload), mode: "no-cors", headers: { "Content-Type": "text/plain; charset=utf-8" } }); mostrarToast(`<strong>Sincronizado:</strong><br>${item.descricao}`, "sucesso"); } catch (e) { filaOffline.push(item); localStorage.setItem('filaOffline', JSON.stringify(filaOffline)); } }
 }
 
-// ================= ACOMPANHAMENTO =================
-
 function abrirAcompanhamento() { mudarTela('tela-acompanhamento'); if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") { promotorFiltroAtual = "todos"; } else { promotorFiltroAtual = usuarioLogado.id; } subPromotorFiltroAtual = "todos"; renderizarFiltroPromotores(); carregarDadosDoBanco(); }
 
 function renderizarFiltroPromotores() {
@@ -581,13 +805,12 @@ function renderizarFiltroPromotores() {
             let u = bancoUsuarios[key];
             let isSupervisor = (u.cargo === "supervisor" || u.cargo === "gestor" || u.cargo === "regional" || key === "master");
             if (isSupervisor) {
-                let temEquipe = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && promotorPertenceAoGestor(k, key));
+                let temEquipe = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === key);
                 if (temEquipe && podeGerenciar(usuarioLogado, key)) {
                     html += `<div class="card-promotor-filtro ${promotorFiltroAtual === key ? 'ativo' : ''}" onclick="setFiltroPromotor('${key}')"><i data-lucide="users" class="lucide-sm"></i> Equipe ${u.nome || key}</div>`;
                 }
             }
         }
-        
         let temOrfaos = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && (!bancoUsuarios[k].criadoPor || !bancoUsuarios[bancoUsuarios[k].criadoPor]));
         if (temOrfaos && (usuarioLogado.id === "master" || usuarioLogado.cargo === "gestor")) {
             html += `<div class="card-promotor-filtro ${promotorFiltroAtual === 'orfaos' ? 'ativo' : ''}" onclick="setFiltroPromotor('orfaos')" style="border-color:#ffc107; color:#856404;"><i data-lucide="alert-triangle" class="lucide-sm"></i> Órfãos</div>`;
@@ -598,7 +821,8 @@ function renderizarFiltroPromotores() {
             for (let key in bancoUsuarios) { 
                 let u = bancoUsuarios[key];
                 if (u.cargo === "promotor") {
-                    if (promotorPertenceAoGestor(key, promotorFiltroAtual)) {
+                    let pertence = (promotorFiltroAtual === 'orfaos') ? (!u.criadoPor || !bancoUsuarios[u.criadoPor]) : (u.criadoPor === promotorFiltroAtual);
+                    if (pertence) {
                         let isAt = subPromotorFiltroAtual === key; 
                         htmlSub += `<div class="card-promotor-filtro ${isAt ? 'ativo' : ''}" style="${isAt ? 'background-color: #17a2b8; border-color: #17a2b8; color: white;' : 'background-color: var(--bg-item); color: var(--cor-secundaria); border-color: var(--border-color);'}" onclick="setSubFiltroPromotor('${key}')"><i data-lucide="user" class="lucide-sm"></i> ${u.nome || key}</div>`;
                     }
@@ -608,7 +832,7 @@ function renderizarFiltroPromotores() {
         } else { if(divSub) divSub.style.display = "none"; }
     } else if (usuarioLogado.cargo === "supervisor") {
         html = `<div class="card-promotor-filtro ${promotorFiltroAtual === 'todos' ? 'ativo' : ''}" onclick="setFiltroPromotor('todos')"><i data-lucide="layout-dashboard" class="lucide-sm"></i> Visão Geral (Sua Equipe)</div>`;
-        for (let key in bancoUsuarios) { if (bancoUsuarios[key].cargo === "promotor" && promotorPertenceAoGestor(key, usuarioLogado.id)) { html += `<div class="card-promotor-filtro ${promotorFiltroAtual === key ? 'ativo' : ''}" onclick="setFiltroPromotor('${key}')"><i data-lucide="user" class="lucide-sm"></i> ${bancoUsuarios[key].nome || key}</div>`; } }
+        for (let key in bancoUsuarios) { if (bancoUsuarios[key].cargo === "promotor" && bancoUsuarios[key].criadoPor === usuarioLogado.id) { html += `<div class="card-promotor-filtro ${promotorFiltroAtual === key ? 'ativo' : ''}" onclick="setFiltroPromotor('${key}')"><i data-lucide="user" class="lucide-sm"></i> ${bancoUsuarios[key].nome || key}</div>`; } }
         if(divSub) divSub.style.display = "none";
     } div.innerHTML = html; loadIcons();
 }
@@ -662,14 +886,18 @@ function renderizarListaAcompanhamento() {
             if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") { 
                 if (promotorFiltroAtual !== "todos") { 
                     if (pKey === "sem_promotor") return;
-                    if (!promotorPertenceAoGestor(pKey, promotorFiltroAtual)) return;
+                    if (promotorFiltroAtual === "orfaos") {
+                        if (bancoUsuarios[pKey].criadoPor && bancoUsuarios[bancoUsuarios[pKey].criadoPor]) return;
+                    } else {
+                        if (bancoUsuarios[pKey].criadoPor !== promotorFiltroAtual) return; 
+                    }
                     if (subPromotorFiltroAtual !== "todos" && pKey !== subPromotorFiltroAtual) return; 
                 } else { 
-                    if (pKey !== "sem_promotor" && !podeGerenciar(usuarioLogado, pKey)) return; 
+                    if (pKey !== "sem_promotor" && !podeGerenciar(usuarioLogado, bancoUsuarios[pKey]?.criadoPor)) return; 
                 } 
             } else if (usuarioLogado.cargo === "supervisor") {
                 if (pKey === "sem_promotor") return; 
-                if (!promotorPertenceAoGestor(pKey, usuarioLogado.id)) return;
+                if (bancoUsuarios[pKey].criadoPor !== usuarioLogado.id) return; 
                 if (promotorFiltroAtual !== "todos" && pKey !== promotorFiltroAtual) return;
             } else if (usuarioLogado.cargo === "promotor") {
                 if (pKey !== usuarioLogado.id) return;
@@ -699,7 +927,269 @@ function renderizarListaAcompanhamento() {
     } div.innerHTML = html; loadIcons();
 }
 
-// ================= FUNÇÕES DE APARELHOS E PRECIFICAÇÃO =================
+// ================= ESTOQUE E MOSTRUÁRIO ================= //
+
+function fecharModalConfirmMostruario() { document.getElementById('modal-confirm-mostruario').classList.remove('ativo'); mostruarioEmEdicao = null; }
+function fecharModalPromptMostruario() { document.getElementById('modal-prompt-mostruario').classList.remove('ativo'); mostruarioEmEdicao = null; }
+function executarRemoverMostruario() { if (!mostruarioEmEdicao) return; delete mostruariosGlobais[mostruarioEmEdicao.key]; localStorage.setItem('mostruariosGlobais', JSON.stringify(mostruariosGlobais)); renderizarListaEstoque(); mostrarToast("Status de mostruário removido.", "info"); fecharModalConfirmMostruario(); }
+function executarAddMostruario() { if (!mostruarioEmEdicao) return; let obs = document.getElementById('input-obs-mostruario').value; mostruariosGlobais[mostruarioEmEdicao.key] = obs.trim() !== "" ? obs.trim() : true; localStorage.setItem('mostruariosGlobais', JSON.stringify(mostruariosGlobais)); renderizarListaEstoque(); mostrarToast("Marcado como mostruário com sucesso!", "sucesso"); fecharModalPromptMostruario(); }
+
+function toggleMostruario(loja, ap) {
+    let k = `${loja}_${ap}`; mostruarioEmEdicao = { loja: loja, ap: ap, key: k };
+    if (mostruariosGlobais[k]) {
+        document.getElementById('texto-confirm-mostruario').innerHTML = `Tem certeza que deseja DESMARCAR o <b>${ap}</b> como mostruário na loja <b>${loja}</b>?`;
+        document.getElementById('modal-confirm-mostruario').classList.add('ativo');
+    } else {
+        document.getElementById('texto-prompt-mostruario').innerHTML = `Marcando <b>${ap}</b> como MOSTRUÁRIO na loja <b>${loja}</b>.<br><br>Se desejar, digite o IMEI ou observação abaixo:`;
+        document.getElementById('input-obs-mostruario').value = ""; document.getElementById('modal-prompt-mostruario').classList.add('ativo');
+    }
+}
+
+function abrirEstoque() { mudarTela('tela-estoque'); promotorEstoqueFiltroAtual = (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") ? "todos" : usuarioLogado.id; renderizarFiltroPromotoresEstoque(); carregarEstoqueDoBanco(); }
+
+function renderizarFiltroPromotoresEstoque() {
+    const div = document.getElementById("seletor-promotores-estoque");
+    if (usuarioLogado.cargo === "promotor") { div.innerHTML = `<div class="card-promotor-filtro ativo"><i data-lucide="user" class="lucide-sm"></i> ${usuarioLogado.nome}</div>`; loadIcons(); return; }
+    let html = `<div class="card-promotor-filtro ${promotorEstoqueFiltroAtual === 'todos' ? 'ativo' : ''}" onclick="setFiltroPromotorEstoque('todos')"><i data-lucide="layout-dashboard" class="lucide-sm"></i> Visão Geral (Todas)</div>`;
+    
+    if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") {
+        for (let key in bancoUsuarios) {
+            let u = bancoUsuarios[key];
+            let isSupervisor = (u.cargo === "supervisor" || u.cargo === "gestor" || u.cargo === "regional" || key === "master");
+            if (isSupervisor) {
+                let temEquipe = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === key);
+                if (temEquipe && podeGerenciar(usuarioLogado, key)) {
+                    html += `<div class="card-promotor-filtro ${promotorEstoqueFiltroAtual === key ? 'ativo' : ''}" onclick="setFiltroPromotorEstoque('${key}')"><i data-lucide="users" class="lucide-sm"></i> Equipe ${u.nome || key}</div>`;
+                }
+            }
+        }
+        let temOrfaos = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && (!bancoUsuarios[k].criadoPor || !bancoUsuarios[bancoUsuarios[k].criadoPor]));
+        if (temOrfaos && (usuarioLogado.id === "master" || usuarioLogado.cargo === "gestor")) {
+            html += `<div class="card-promotor-filtro ${promotorEstoqueFiltroAtual === 'orfaos' ? 'ativo' : ''}" onclick="setFiltroPromotorEstoque('orfaos')" style="border-color:#ffc107; color:#856404;"><i data-lucide="alert-triangle" class="lucide-sm"></i> Órfãos</div>`;
+        }
+    } else if (usuarioLogado.cargo === "supervisor") {
+        for (let key in bancoUsuarios) {
+            if (bancoUsuarios[key].cargo === "promotor" && bancoUsuarios[key].criadoPor === usuarioLogado.id) {
+                html += `<div class="card-promotor-filtro ${promotorEstoqueFiltroAtual === key ? 'ativo' : ''}" onclick="setFiltroPromotorEstoque('${key}')"><i data-lucide="user" class="lucide-sm"></i> ${bancoUsuarios[key].nome || key}</div>`;
+            }
+        }
+    }
+    div.innerHTML = html; loadIcons();
+}
+
+function setFiltroPromotorEstoque(id) { promotorEstoqueFiltroAtual = id; renderizarFiltroPromotoresEstoque(); renderizarListaEstoque(); }
+
+function carregarEstoqueDoBanco() { 
+    document.getElementById("btn-atualizar-estoque").innerHTML = '<i data-lucide="loader-2" style="animation: spin 2s linear infinite;"></i> Atualizando...'; loadIcons();
+    document.getElementById("lista-estoque-agrupada").innerHTML = "Buscando dados do estoque...";
+    
+    fetch(URL_DA_SUA_API + "?acao=estoque&_t=" + new Date().getTime())
+    .then(r => { if(!r.ok) throw new Error("Erro na rede"); return r.json(); })
+    .then(res => { 
+        if (res.status === "sucesso") { dadosEstoqueGlobal = res.estoque || []; renderizarListaEstoque(); } 
+        else { document.getElementById("lista-estoque-agrupada").innerHTML = `<p style="color:red; text-align:center;">Erro ao carregar: ${res.mensagem || 'Desconhecido'}</p>`; }
+    }).catch(err => { document.getElementById("lista-estoque-agrupada").innerHTML = `<p style="color:red; text-align:center;">Erro de conexão. Verifique o link da API ou sua internet.</p>`; console.error(err); })
+    .finally(() => { document.getElementById("btn-atualizar-estoque").innerHTML = '<i data-lucide="refresh-cw"></i> Atualizar Estoque'; loadIcons(); }); 
+}
+
+function renderizarListaEstoque() {
+    pendenciasEstoque = {}; document.getElementById("area-conferencia-estoque").style.display = "none"; let lojasEstoque = {}; let lojasAtivas = [];
+    let mostrarZerados = document.getElementById('check-mostrar-zerados').checked;
+
+    if (promotorEstoqueFiltroAtual === "todos" && (usuarioLogado.cargo === "gestor" || usuarioLogado.id === "master")) {
+        lojasAtivas = Object.keys(lojasConfig);
+    } else if (promotorEstoqueFiltroAtual === "orfaos") {
+        for (let k in bancoUsuarios) {
+            if (bancoUsuarios[k].cargo === "promotor" && (!bancoUsuarios[k].criadoPor || !bancoUsuarios[bancoUsuarios[k].criadoPor])) {
+                bancoUsuarios[k].lojasPermitidas.forEach(l => { if(!lojasAtivas.includes(l)) lojasAtivas.push(l); });
+            }
+        }
+    } else if (promotorEstoqueFiltroAtual === "todos" && usuarioLogado.cargo === "regional") {
+        for (let k in bancoUsuarios) {
+            if (bancoUsuarios[k].cargo === "promotor" && podeGerenciar(usuarioLogado, k)) {
+                bancoUsuarios[k].lojasPermitidas.forEach(l => { if(!lojasAtivas.includes(l)) lojasAtivas.push(l); });
+            }
+        }
+    } else if (promotorEstoqueFiltroAtual === "todos" && usuarioLogado.cargo === "supervisor") {
+        for (let k in bancoUsuarios) {
+            if (bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === usuarioLogado.id) {
+                bancoUsuarios[k].lojasPermitidas.forEach(l => { if(!lojasAtivas.includes(l)) lojasAtivas.push(l); });
+            }
+        }
+    } else {
+        let fObj = bancoUsuarios[promotorEstoqueFiltroAtual];
+        if (fObj && fObj.cargo === "supervisor") {
+            for (let k in bancoUsuarios) {
+                if (bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === promotorEstoqueFiltroAtual) {
+                    bancoUsuarios[k].lojasPermitidas.forEach(l => { if(!lojasAtivas.includes(l)) lojasAtivas.push(l); });
+                }
+            }
+        } else if (fObj && fObj.cargo === "promotor") {
+            lojasAtivas = fObj.lojasPermitidas;
+        }
+    }
+
+    lojasAtivas.sort((a,b) => a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'}));
+    lojasAtivas.forEach(loja => { lojasEstoque[loja] = {}; for (let ap in mapaEmojis) lojasEstoque[loja][`${mapaEmojis[ap]} ${ap.toUpperCase()}`] = 0; });
+    
+    dadosEstoqueGlobal.forEach(row => { 
+        let nomeLojaSheet = getVal(row, ['loja', 'filial']).trim().toLowerCase();
+        let lojaEncontrada = Object.keys(lojasEstoque).find(l => l.trim().toLowerCase() === nomeLojaSheet);
+        
+        if (lojaEncontrada) {
+            let chave = extrairChaveAparelho(getVal(row, ['aparelho', 'modelo', 'produto']));
+            if (chave && mapaEmojis[chave]) {
+                let nomeOficial = `${mapaEmojis[chave]} ${chave.toUpperCase()}`;
+                if (lojasEstoque[lojaEncontrada][nomeOficial] !== undefined) {
+                    lojasEstoque[lojaEncontrada][nomeOficial] += Number(getVal(row, ['quantidade', 'qtd', 'delta'])) || 0;
+                }
+            }
+        } 
+    });
+    
+    let html = "";
+    for (let loja in lojasEstoque) {
+        let totalLoja = 0; let htmlItens = "";
+        for (let apNome in lojasEstoque[loja]) {
+            let qtd = lojasEstoque[loja][apNome]; 
+            if (qtd === 0 && !mostrarZerados) continue;
+            totalLoja += qtd; let btnId = (loja + apNome).replace(/[^a-zA-Z0-9]/g, '');
+            
+            let kMostruario = `${loja}_${apNome}`; let isMostruario = mostruariosGlobais[kMostruario];
+            if (qtd !== 1 && isMostruario) { delete mostruariosGlobais[kMostruario]; isMostruario = false; localStorage.setItem('mostruariosGlobais', JSON.stringify(mostruariosGlobais)); }
+
+            let btnMostruarioHtml = "";
+            if (qtd === 1) {
+                if (isMostruario) {
+                    let obsExtra = (typeof isMostruario === 'string' && isMostruario !== "true") ? ` (${isMostruario})` : "";
+                    btnMostruarioHtml = `<span onclick="toggleMostruario('${loja}', '${apNome}')" style="cursor:pointer; font-size:10px; background:#dc3545; color:white; padding:3px 8px; border-radius:12px; margin-left:8px; display:inline-flex; align-items:center; gap:4px; font-weight:bold; box-shadow: 0 1px 3px rgba(0,0,0,0.2);" title="Clique para remover o mostruário">🔴 Mostruário${obsExtra}</span>`;
+                } else {
+                    btnMostruarioHtml = `<span onclick="toggleMostruario('${loja}', '${apNome}')" style="cursor:pointer; font-size:10px; background:var(--bg-fundo); border:1px solid var(--border-color); color:var(--cor-secundaria); padding:3px 8px; border-radius:12px; margin-left:8px; display:inline-flex; align-items:center; gap:4px;" title="Clique para adicionar mostruário">⚪ Marcar Mostruário</span>`;
+                }
+            }
+
+            let htmlControles = "";
+            let permEstoquePromotor = (usuarioLogado.cargo === "promotor") ? (usuarioLogado.permissoes ? usuarioLogado.permissoes.estoque_editar : true) : false;
+            let adminRole = (usuarioLogado.cargo === "supervisor" || usuarioLogado.cargo === "regional" || usuarioLogado.cargo === "gestor" || usuarioLogado.id === "master");
+            
+            if (permEstoquePromotor || adminRole) { 
+                htmlControles = `<button class="btn-est" onclick="alterarEstoque('${loja}', '${apNome}', -1, '${btnId}')">-</button><span class="qtd-badge" id="badge-${btnId}">${qtd}</span><button class="btn-est" onclick="alterarEstoque('${loja}', '${apNome}', 1, '${btnId}')">+</button>`; 
+            } else { 
+                htmlControles = `<span class="qtd-badge" style="background-color: var(--bg-item); color: var(--cor-secundaria); padding: 4px 12px; font-size: 14px; border: 1px solid var(--border-color);">${qtd} un</span>`; 
+            }
+            
+            htmlItens += `<div class="estoque-item-linha"><span>${apNome} ${btnMostruarioHtml}</span><div class="estoque-controles">${htmlControles}</div></div>`;
+        }
+        if(htmlItens !== "") { html += `<div class="loja-card-acompanhamento"><div class="loja-titulo"><span><i data-lucide="store" class="lucide-sm"></i> ${loja}</span><span class="loja-badge-total">Total Geral: ${totalLoja} un</span></div><div class="vendedor-itens-box">${htmlItens}</div></div>`; }
+    }
+    document.getElementById("lista-estoque-agrupada").innerHTML = html || `<div class="mensagem-vazia">Nenhum estoque para exibir com os filtros atuais.</div>`;
+    atualizarTelaConferenciaEstoque(); loadIcons();
+}
+
+function alterarEstoque(loja, ap, delta, id) {
+    let k = `${loja}|${ap}`; if (!pendenciasEstoque[k]) { let linha = dadosEstoqueGlobal.find(r => getVal(r, ['loja', 'filial']) === loja && getVal(r, ['aparelho', 'modelo']) === ap); pendenciasEstoque[k] = { loja: loja, aparelho: ap, qtdOriginal: linha ? Number(getVal(linha, ['quantidade', 'qtd', 'delta'])) : 0, novaQtd: 0, deltaTotal: 0 }; }
+    let p = pendenciasEstoque[k]; p.deltaTotal += delta; p.novaQtd = p.qtdOriginal + p.deltaTotal; if (p.novaQtd < 0) { p.novaQtd = 0; p.deltaTotal = -p.qtdOriginal; }
+    let badge = document.getElementById(`badge-${id}`); if(badge) { badge.innerText = p.novaQtd; badge.style.backgroundColor = p.deltaTotal !== 0 ? "#fff3cd" : "var(--bg-card)"; badge.style.color = p.deltaTotal !== 0 ? "#856404" : "#0086ff"; }
+    atualizarTelaConferenciaEstoque();
+}
+
+function atualizarTelaConferenciaEstoque() {
+    const div = document.getElementById("area-conferencia-estoque"); 
+    const lista = document.getElementById("lista-pendentes-estoque"); 
+    const btnOk = document.getElementById('container-btn-conferencia-ok');
+    
+    let html = ""; let tem = false;
+    for (let k in pendenciasEstoque) { 
+        let p = pendenciasEstoque[k]; 
+        if (p.deltaTotal !== 0) { 
+            tem = true; 
+            html += `<div class="item-alteracao-estoque" style="background: var(--bg-container); border: 1px solid var(--border-color); padding: 10px; border-radius: 6px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--cor-texto);"><span>📍 [${p.loja}] ${p.aparelho}</span><span>De: <strong>${p.qtdOriginal}</strong> ➔ Para: <span style="color: #0086ff; font-weight: bold;">${p.novaQtd} un</span></span></div>`; 
+        } 
+    }
+    
+    if (tem) { 
+        div.style.display = "block"; lista.innerHTML = html; 
+        if(btnOk) btnOk.style.display = "none";
+    } else { 
+        div.style.display = "none"; lista.innerHTML = ""; 
+        let hoje = new Date().toLocaleDateString('pt-BR');
+        let ultima = localStorage.getItem('ultimaConferencia_' + usuarioLogado.id);
+        if (usuarioLogado.cargo === "promotor" && ultima !== hoje) { if(btnOk) btnOk.style.display = "block"; } else { if(btnOk) btnOk.style.display = "none"; }
+    }
+}
+
+function limparConferenciaEstoque() { renderizarListaEstoque(); }
+
+function verificarMotivoEstoque() {
+    let chaves = Object.keys(pendenciasEstoque).filter(k => pendenciasEstoque[k].deltaTotal !== 0);
+    if (chaves.length === 0) return;
+    
+    let adminRole = (usuarioLogado.cargo === "supervisor" || usuarioLogado.cargo === "regional" || usuarioLogado.cargo === "gestor" || usuarioLogado.id === "master");
+    
+    if (adminRole) {
+        executarEnvioEstoque("Ajuste Gerencial");
+    } else {
+        document.getElementById('modal-motivo-estoque').classList.add('ativo');
+    }
+}
+
+async function confirmarEnvioEstoqueMotivo() {
+    document.getElementById('modal-motivo-estoque').classList.remove('ativo');
+    let motivoSelecionado = document.getElementById('select-motivo-estoque').value;
+    executarEnvioEstoque(motivoSelecionado);
+}
+
+async function executarEnvioEstoque(motivoSelecionado) {
+    const btn = document.getElementById("btn-enviar-estoque"); btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" style="animation: spin 2s linear infinite;"></i> Enviando...'; loadIcons(); 
+    let chaves = Object.keys(pendenciasEstoque).filter(k => pendenciasEstoque[k].deltaTotal !== 0); 
+    let qtdAlterada = chaves.length; 
+    let detalhesEstoque = `<strong>Estoque Atualizado:</strong><br>${qtdAlterada} modelos sofreram alteração.<br><strong>Motivo:</strong> ${motivoSelecionado}`;
+    
+    if (!navigator.onLine) { 
+        for (let i = 0; i < chaves.length; i++) { 
+            let p = pendenciasEstoque[chaves[i]]; 
+            filaOffline.push({ tipo: "estoque", payload: { tipo: "estoque", loja: p.loja, aparelho: p.aparelho, motivo: motivoSelecionado, delta: p.deltaTotal, promotor: usuarioLogado.id }, descricao: `Estoque: [${p.loja}] ${p.aparelho} (${motivoSelecionado})`, timestamp: new Date().getTime() }); 
+        } 
+        localStorage.setItem('filaOffline', JSON.stringify(filaOffline)); 
+        localStorage.setItem('ultimaConferencia_' + usuarioLogado.id, new Date().toLocaleDateString('pt-BR'));
+        verificarConferenciaEstoque();
+        mostrarToast(`Sem internet. Salvo no modo Offline:\n${detalhesEstoque}`, "alerta"); limparConferenciaEstoque(); btn.disabled = false; btn.innerHTML = '<i data-lucide="upload-cloud"></i> Enviar Atualização'; loadIcons(); return; 
+    }
+    
+    try { 
+        for (let i = 0; i < chaves.length; i++) { 
+            let p = pendenciasEstoque[chaves[i]]; 
+            await fetch(URL_DA_SUA_API, { method: "POST", body: JSON.stringify({ tipo: "estoque", loja: p.loja, aparelho: p.aparelho, motivo: motivoSelecionado, delta: p.deltaTotal, promotor: usuarioLogado.id }), mode: "no-cors", headers: { "Content-Type": "text/plain; charset=utf-8" } }); 
+        } 
+        localStorage.setItem('ultimaConferencia_' + usuarioLogado.id, new Date().toLocaleDateString('pt-BR'));
+        verificarConferenciaEstoque();
+        mostrarToast(`Correção Enviada com Sucesso!\n${detalhesEstoque}`, "sucesso"); carregarEstoqueDoBanco(); 
+    } catch (e) { 
+        for (let i = 0; i < chaves.length; i++) { 
+            let p = pendenciasEstoque[chaves[i]]; 
+            filaOffline.push({ tipo: "estoque", payload: { tipo: "estoque", loja: p.loja, aparelho: p.aparelho, motivo: motivoSelecionado, delta: p.deltaTotal, promotor: usuarioLogado.id }, descricao: `Estoque: [${p.loja}] ${p.aparelho} (${motivoSelecionado})`, timestamp: new Date().getTime() }); 
+        } 
+        localStorage.setItem('filaOffline', JSON.stringify(filaOffline)); 
+        localStorage.setItem('ultimaConferencia_' + usuarioLogado.id, new Date().toLocaleDateString('pt-BR'));
+        verificarConferenciaEstoque();
+        mostrarToast(`Erro de rede. Salvo no modo Offline:\n${detalhesEstoque}`, "alerta"); limparConferenciaEstoque(); 
+    } finally { btn.disabled = false; btn.innerHTML = '<i data-lucide="upload-cloud"></i> Enviar Atualização'; loadIcons(); }
+}
+
+async function registrarConferenciaOK() {
+    const btn = document.getElementById("btn-conferencia-ok");
+    btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" style="animation: spin 2s linear infinite;"></i> Registrando...'; loadIcons();
+    let payload = { tipo: "estoque", loja: "Geral", aparelho: "Conferência Diária [Motivo: Conferência OK - Sem Divergências]", delta: 0, promotor: usuarioLogado.id };
+    
+    try {
+        if (navigator.onLine) { await fetch(URL_DA_SUA_API, { method: "POST", body: JSON.stringify(payload), mode: "no-cors", headers: { "Content-Type": "text/plain; charset=utf-8" } }); } 
+        else { filaOffline.push({ tipo: "estoque", payload: payload, descricao: "Conferência OK", timestamp: new Date().getTime() }); localStorage.setItem('filaOffline', JSON.stringify(filaOffline)); }
+        localStorage.setItem('ultimaConferencia_' + usuarioLogado.id, new Date().toLocaleDateString('pt-BR')); mostrarToast("Conferência registrada com sucesso!", "sucesso"); verificarConferenciaEstoque(); renderizarListaEstoque(); 
+    } catch (e) {
+        filaOffline.push({ tipo: "estoque", payload: payload, descricao: "Conferência OK", timestamp: new Date().getTime() }); localStorage.setItem('filaOffline', JSON.stringify(filaOffline)); localStorage.setItem('ultimaConferencia_' + usuarioLogado.id, new Date().toLocaleDateString('pt-BR')); mostrarToast("Salvo offline!", "alerta"); verificarConferenciaEstoque(); renderizarListaEstoque();
+    } finally { btn.disabled = false; btn.innerHTML = '<i data-lucide="check-circle-2"></i> Finalizar Conferência (Sem Divergências)'; loadIcons(); }
+}
+
 function extrairChaveAparelho(textoBruto) { 
     let limpo = textoBruto.split("→")[0].split("(")[0].replace(/\[Motivo:.*?\]/g, "").trim().toLowerCase();
     let matchAlfaNum = limpo.match(/[a-z0-9]/i);
@@ -716,194 +1206,256 @@ function ehPremium(textoBruto, supervisorId) {
     return (pSup[chave] === 1 || pSup[chave] === true);
 }
 
+// ================= HISTÓRICO GERAL E ESTOQUE ================= //
+function abrirHistorico(tipo) {
+    tipoHistoricoAtual = tipo; mudarTela('tela-historico');
+    document.getElementById('titulo-tela-historico').innerHTML = tipo === 'estoque' ? '<i data-lucide="search"></i> Auditoria de Estoque' : '<i data-lucide="clock"></i> Ações da Equipe';
+    
+    let selSup = document.getElementById('filtro-sup-historico');
+    if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") {
+        document.getElementById('container-filtro-sup-historico').style.display = "block";
+        let htmlOp = '<option value="todos">Todas as Regiões</option>';
+        for(let k in bancoUsuarios) { if(bancoUsuarios[k].cargo === "supervisor" && podeGerenciar(usuarioLogado, k)) { htmlOp += `<option value="${k}">Equipe: ${bancoUsuarios[k].nome || k}</option>`; } }
+        selSup.innerHTML = htmlOp;
+    } else { document.getElementById('container-filtro-sup-historico').style.display = "none"; }
+    
+    mudouSupHistorico(); carregarHistoricoDoBanco();
+}
 
-// ================= ARQUITETURA DASHBOARD (BLINDADA) =================
+function mudouSupHistorico() {
+    let selSup = document.getElementById('filtro-sup-historico').value;
+    let selProm = document.getElementById('filtro-promotor-historico');
+    let htmlOp = '<option value="todos">Todos da Equipe</option>';
+    let supAlvo = (usuarioLogado.cargo === "supervisor") ? usuarioLogado.id : selSup;
+    if (supAlvo && supAlvo !== "todos") {
+        for(let k in bancoUsuarios) { if(bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === supAlvo) { htmlOp += `<option value="${k}">${bancoUsuarios[k].nome || k}</option>`; } }
+    } else if (supAlvo === "todos" && (usuarioLogado.cargo === "master" || usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional")) {
+        for(let k in bancoUsuarios) { 
+            if(bancoUsuarios[k].cargo === "promotor" && podeGerenciar(usuarioLogado, k)) { 
+                let nomeSup = bancoUsuarios[k].criadoPor ? (bancoUsuarios[bancoUsuarios[k].criadoPor]?.nome || bancoUsuarios[k].criadoPor) : "Órfão";
+                htmlOp += `<option value="${k}">[${nomeSup}] ${bancoUsuarios[k].nome || k}</option>`; 
+            } 
+        }
+    }
+    selProm.innerHTML = htmlOp;
+    aplicarFiltroHistorico();
+}
+
+function aplicarFiltroHistorico() { renderizarListaHistorico(); }
+
+function carregarHistoricoDoBanco(forcarNuvem = false) {
+    const div = document.getElementById("lista-historico");
+    if (!forcarNuvem && dadosHistoricoGlobal.length > 0) { renderizarListaHistorico(); return; }
+    div.innerHTML = '<i data-lucide="loader-2" class="lucide-sm" style="animation: spin 2s linear infinite;"></i> Carregando dados da nuvem...'; loadIcons();
+    fetch(URL_DA_SUA_API + "?acao=historico&limit=500&_t=" + new Date().getTime())
+    .then(r => r.json())
+    .then(res => { if(res.status === "sucesso") { dadosHistoricoGlobal = res.dados || []; renderizarListaHistorico(); } else { div.innerHTML = "Erro ao carregar histórico."; } })
+    .catch(e => { div.innerHTML = "Erro de rede."; console.error(e); });
+}
+
+function renderizarListaHistorico() {
+    const div = document.getElementById("lista-historico");
+    let dataInicio = document.getElementById('filtro-data-inicio-historico').value;
+    let dataFim = document.getElementById('filtro-data-fim-historico').value;
+    let supAlvo = (usuarioLogado.cargo === "supervisor") ? usuarioLogado.id : document.getElementById('filtro-sup-historico').value;
+    let promAlvo = document.getElementById('filtro-promotor-historico').value;
+
+    let filtrados = dadosHistoricoGlobal.filter(row => {
+        let tipoAcao = getVal(row, ['tipoacao', 'tipo', 'acao', 'ação']).toLowerCase();
+        let detalhes = getVal(row, ['detalhes', 'detalhe', 'descrição', 'descricao']).toLowerCase();
+        
+        let isEstoque = tipoAcao.includes('estoque') || tipoAcao.includes('conferência') || detalhes.includes('estoque') || detalhes.includes('conferência');
+        let tipoRegistro = isEstoque ? 'estoque' : 'venda';
+        
+        if(tipoHistoricoAtual === 'estoque' && tipoRegistro !== 'estoque') return false;
+        if(tipoHistoricoAtual === 'geral' && tipoRegistro === 'estoque') return false; 
+        
+        let pLogin = getVal(row, ['promotor', 'usuario', 'login']);
+        let pObj = bancoUsuarios[pLogin];
+        
+        if (usuarioLogado.cargo === "promotor") {
+            if (pLogin !== usuarioLogado.id) return false;
+        } else if (usuarioLogado.cargo === "supervisor") {
+            if (pLogin !== usuarioLogado.id && (!pObj || pObj.criadoPor !== usuarioLogado.id)) return false;
+            if (promAlvo && promAlvo !== "todos" && pLogin !== promAlvo) return false;
+        } else {
+            if (supAlvo && supAlvo !== "todos") {
+                if (pLogin !== supAlvo && (!pObj || pObj.criadoPor !== supAlvo)) return false;
+            } else if (supAlvo === "todos") {
+                if (pLogin !== usuarioLogado.id && pLogin !== "Sistema" && !podeGerenciar(usuarioLogado, pLogin)) return false;
+            }
+            if (promAlvo && promAlvo !== "todos" && pLogin !== promAlvo) return false;
+        }
+        
+        let rowData = getVal(row, ['datahora', 'data', 'timestamp', 'carimbo']);
+        if((dataInicio || dataFim) && rowData) { 
+            let dtStr = rowData;
+            if(dtStr.includes("/")) { 
+                let partesEspaco = dtStr.split(" ");
+                let parts = partesEspaco[0].split("/"); 
+                let horaStr = partesEspaco.length > 1 ? partesEspaco[1] : "00:00:00";
+                if(parts.length === 3) dtStr = `${parts[2]}-${parts[1]}-${parts[0]}T${horaStr}`; 
+            }
+            let dt = new Date(dtStr); 
+            if (!isNaN(dt.getTime())) {
+                if(dataInicio && dt < new Date(dataInicio + "T00:00:00")) return false; 
+                if(dataFim && dt > new Date(dataFim + "T23:59:59")) return false; 
+            }
+        }
+        
+        row._tipoConsolidado = tipoRegistro;
+        return true;
+    });
+
+    if(filtrados.length === 0) { 
+        div.innerHTML = `<div class='mensagem-vazia'>Nenhum registro encontrado em <b>${tipoHistoricoAtual === 'estoque' ? 'Auditoria de Estoque' : 'Ações da Equipe'}</b>.</div>`; 
+        return; 
+    }
+    
+    let html = "";
+    filtrados.forEach(row => {
+        let rawData = getVal(row, ['datahora', 'data', 'timestamp', 'carimbo']);
+        let dataFormatada = rawData || "Sem Data";
+        
+        if (rawData) {
+            try {
+                let dtStr = rawData;
+                if(dtStr.includes("/")) { 
+                    let partesEspaco = dtStr.split(" ");
+                    let parts = partesEspaco[0].split("/"); 
+                    let horaStr = partesEspaco.length > 1 ? partesEspaco[1] : "00:00:00";
+                    if(parts.length === 3) dtStr = `${parts[2]}-${parts[1]}-${parts[0]}T${horaStr}`; 
+                }
+                let d = new Date(dtStr);
+                if (!isNaN(d.getTime())) { dataFormatada = d.toLocaleDateString('pt-BR') + ' às ' + d.toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'}); } 
+            } catch(e) {}
+        }
+
+        let pLogin = getVal(row, ['promotor', 'usuario', 'login']);
+        let nomePromotor = bancoUsuarios[pLogin] ? bancoUsuarios[pLogin].nome : (pLogin || "Sistema");
+        
+        let tipoAcao = getVal(row, ['tipoacao', 'tipo', 'acao', 'ação']);
+        let detalhes = getVal(row, ['detalhes', 'detalhe', 'descrição', 'descricao']);
+
+        let icone = row._tipoConsolidado === 'estoque' ? '<i data-lucide="package" style="color:#ff9800;" class="lucide-sm"></i>' : '<i data-lucide="shopping-bag" style="color:#28a745;" class="lucide-sm"></i>';
+
+        let detalheFormatado = detalhes;
+        if (row._tipoConsolidado === 'estoque' && detalhes.includes("|")) {
+            let partes = detalhes.split('|');
+            let lojaPart = partes[0] ? partes[0].trim() : "";
+            let modeloPart = partes[1] ? partes[1].trim() : "";
+            let qtdPart = partes[2] ? partes[2].trim() : "";
+            
+            detalheFormatado = `
+                <div style="font-size: 13px; color: var(--cor-texto);">
+                    <strong style="color: #0086ff;">[${lojaPart.replace("Loja:", "").trim()}]</strong><br>
+                    ${modeloPart.replace("Modelo:", "Aparelho:").trim()}
+                </div>
+                <div style="font-size: 12px; color: var(--cor-secundaria); margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--border-color);">
+                    ${qtdPart.replace("Qtd:", "Movimentação:").trim()}
+                </div>
+            `;
+        } else if (row._tipoConsolidado === 'venda' && detalhes.includes("|")) {
+            let partes = detalhes.split('|');
+            let vendaPart = partes[0] ? partes[0].trim() : "";
+            let vendPart = partes[1] ? partes[1].trim() : "";
+            
+            detalheFormatado = `
+                <div style="font-size: 13px; color: var(--cor-texto);">
+                    ${vendaPart}
+                </div>
+                <div style="font-size: 12px; color: var(--cor-secundaria); margin-top: 4px;">
+                    <i data-lucide="user-check" class="lucide-sm"></i> ${vendPart.replace("Vend:", "Vendedor:").trim()}
+                </div>
+            `;
+        }
+
+        html += `<div style="background:var(--bg-container); border:1px solid var(--border-color); padding:14px; border-radius:10px; margin-bottom:12px; display:flex; flex-direction:column; gap:10px; box-shadow: 0 2px 6px var(--shadow-color);">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px dashed var(--border-color); padding-bottom: 8px;">
+                <span style="font-size:12px; font-weight:bold; color:var(--cor-secundaria);">${dataFormatada}</span>
+                <span style="font-size:13px; font-weight:bold; color:#0086ff; display:flex; align-items:center; gap:4px;"><i data-lucide="user-circle" class="lucide-sm" style="margin:0;"></i> ${nomePromotor}</span>
+            </div>
+            <div style="display:flex; align-items:flex-start; gap:12px;">
+                <div style="background: var(--bg-item); padding: 10px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-color);">${icone}</div>
+                <div style="flex: 1; text-align: left;">
+                    <div style="font-weight: bold; color: var(--cor-texto); margin-bottom: 4px;">${tipoAcao || (row._tipoConsolidado === 'estoque' ? 'Auditoria' : 'Venda')}</div>
+                    ${detalheFormatado}
+                </div>
+            </div>
+        </div>`;
+    });
+    
+    div.innerHTML = html; 
+    loadIcons();
+}
+
+// ================= GRÁFICOS E COMISSÕES DINÂMICAS ================= //
+
+let chartCoparticipacao = null; let chartCapa = null; let chartLojas = null; let chartModelos = null;
+
+function atualizarFiltroPromotorDash() {
+    let selSup = document.getElementById('filtro-supervisor-dash').value; let selProm = document.getElementById('filtro-promotor-dash'); let promotorAtual = selProm.value; 
+    
+    let htmlOp = '<option value="todos">Todos da Equipe</option>'; 
+    let supAlvo = (usuarioLogado.cargo === "supervisor") ? usuarioLogado.id : selSup;
+    
+    if (supAlvo && supAlvo !== "todos" && supAlvo !== "orfaos") { 
+        for(let k in bancoUsuarios) { 
+            if (bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === supAlvo) { 
+                htmlOp += `<option value="${k}">${bancoUsuarios[k].nome || k}</option>`; 
+            } 
+        } 
+    } else if (supAlvo === "orfaos") {
+        for(let k in bancoUsuarios) { 
+            let isOrfao = (!bancoUsuarios[k].criadoPor || !bancoUsuarios[bancoUsuarios[k].criadoPor]);
+            if (bancoUsuarios[k].cargo === "promotor" && isOrfao) { 
+                htmlOp += `<option value="${k}">${bancoUsuarios[k].nome || k}</option>`; 
+            } 
+        }
+    } else if (supAlvo === "todos") {
+        for(let k in bancoUsuarios) { 
+            if (bancoUsuarios[k].cargo === "promotor" && podeGerenciar(usuarioLogado, k)) { 
+                let nomeSup = bancoUsuarios[k].criadoPor ? (bancoUsuarios[bancoUsuarios[k].criadoPor]?.nome || bancoUsuarios[k].criadoPor) : "Órfão";
+                htmlOp += `<option value="${k}">[${nomeSup}] ${bancoUsuarios[k].nome || k}</option>`; 
+            } 
+        }
+    }
+    selProm.innerHTML = htmlOp; 
+    if (Array.from(selProm.options).some(opt => opt.value === promotorAtual)) { selProm.value = promotorAtual; }
+}
+
+function mudouSupervisorDash() { atualizarFiltroPromotorDash(); abrirDashboard(); }
 
 function abrirDashboard() { 
     mudarTela('tela-dashboard'); 
-    renderizarFiltrosDash();
-    atualizarDadosDash();
-}
-
-function renderizarFiltrosDash() {
-    let div = document.getElementById('filtros-hierarquia-dash');
-    if (!div) {
-        let topo = document.querySelector('.controles-topo-acompanhamento');
-        if (topo) {
-            topo.insertAdjacentHTML('afterend', '<div id="filtros-hierarquia-dash" style="margin-bottom: 20px;"></div>');
-            div = document.getElementById('filtros-hierarquia-dash');
-        } else { return; }
-    }
+    let selSup = document.getElementById('filtro-supervisor-dash');
     
-    let u = usuarioLogado;
-    let html = '';
-
-    if (u.cargo === "master" || u.cargo === "gestor") {
-        let regioes = [...new Set(Object.values(bancoUsuarios).map(x => x.regiao).filter(x => x && x.trim() !== ""))].sort();
-        html += `
-        <div style="flex:1; min-width: 150px; text-align: left;">
-            <label style="font-size: 11px; font-weight: bold; color: var(--cor-secundaria); display: block; margin-bottom: 4px; text-transform:uppercase;">🗺️ Regional</label>
-            <select id="dash-filtro-reg" class="seletor-mes" style="width: 100%; padding: 10px; font-size: 13px;" onchange="mudouFiltroDash('reg')">
-                <option value="todos">Todas as Regiões</option>`;
-                regioes.forEach(r => html += `<option value="${r}">${r}</option>`);
-        html += `</select></div>`;
-
-        html += `
-        <div style="flex:1; min-width: 150px; text-align: left;">
-            <label style="font-size: 11px; font-weight: bold; color: var(--cor-secundaria); display: block; margin-bottom: 4px; text-transform:uppercase;">👥 Equipe</label>
-            <select id="dash-filtro-sup" class="seletor-mes" style="width: 100%; padding: 10px; font-size: 13px;" onchange="mudouFiltroDash('sup')">
-                <option value="todos">Todos os Supervisores</option>
-            </select>
-        </div>`;
-        
-        html += `
-        <div style="flex:1; min-width: 150px; text-align: left;">
-            <label style="font-size: 11px; font-weight: bold; color: var(--cor-secundaria); display: block; margin-bottom: 4px; text-transform:uppercase;">👤 Promotor</label>
-            <select id="dash-filtro-prom" class="seletor-mes" style="width: 100%; padding: 10px; font-size: 13px; border-color: #17a2b8; color: #17a2b8;" onchange="mudouFiltroDash('prom')">
-                <option value="todos">Todos os Promotores</option>
-            </select>
-        </div>`;
-    } 
-    else if (u.cargo === "regional") {
-        html += `
-        <div style="flex:1; min-width: 150px; text-align: left;">
-            <label style="font-size: 11px; font-weight: bold; color: var(--cor-secundaria); display: block; margin-bottom: 4px; text-transform:uppercase;">👥 Equipe (Sua Região)</label>
-            <select id="dash-filtro-sup" class="seletor-mes" style="width: 100%; padding: 10px; font-size: 13px;" onchange="mudouFiltroDash('sup')">
-                <option value="todos">Todos os Supervisores</option>
-            </select>
-        </div>`;
-        
-        html += `
-        <div style="flex:1; min-width: 150px; text-align: left;">
-            <label style="font-size: 11px; font-weight: bold; color: var(--cor-secundaria); display: block; margin-bottom: 4px; text-transform:uppercase;">👤 Promotor</label>
-            <select id="dash-filtro-prom" class="seletor-mes" style="width: 100%; padding: 10px; font-size: 13px; border-color: #17a2b8; color: #17a2b8;" onchange="mudouFiltroDash('prom')">
-                <option value="todos">Todos os Promotores</option>
-            </select>
-        </div>`;
-    } 
-    else if (u.cargo === "supervisor") {
-        html += `
-        <div style="flex:1; min-width: 150px; text-align: left;">
-            <label style="font-size: 11px; font-weight: bold; color: var(--cor-secundaria); display: block; margin-bottom: 4px; text-transform:uppercase;">👤 Promotor (Sua Equipe)</label>
-            <select id="dash-filtro-prom" class="seletor-mes" style="width: 100%; padding: 10px; font-size: 13px; border-color: #17a2b8; color: #17a2b8;" onchange="mudouFiltroDash('prom')">
-                <option value="todos">Todos os Seus Promotores</option>
-            </select>
-        </div>`;
-    }
-
-    div.innerHTML = `<div style="display:flex; flex-wrap: wrap; gap: 10px; background: var(--bg-item); padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 2px 8px var(--shadow-color);">${html}</div>`;
-    
-    let velhoContainerSup = document.getElementById('container-filtro-supervisor-dash');
-    if (velhoContainerSup) velhoContainerSup.style.display = 'none';
-    let velhoContainerProm = document.getElementById('container-filtro-promotor-dash');
-    if (velhoContainerProm) velhoContainerProm.style.display = 'none';
-
-    if (u.cargo !== "promotor") preencherOpcoesCascataDash();
-}
-
-function mudouFiltroDash(origem) {
-    if (origem === 'reg') {
-        let elSup = document.getElementById('dash-filtro-sup');
-        if (elSup) elSup.value = "todos";
-        let elProm = document.getElementById('dash-filtro-prom');
-        if (elProm) elProm.value = "todos";
-    } else if (origem === 'sup') {
-        let elProm = document.getElementById('dash-filtro-prom');
-        if (elProm) elProm.value = "todos";
-    }
-    preencherOpcoesCascataDash();
-    atualizarDadosDash();
-}
-
-function preencherOpcoesCascataDash() {
-    let u = usuarioLogado;
-    let valReg = document.getElementById('dash-filtro-reg') ? document.getElementById('dash-filtro-reg').value : (u.cargo === "regional" ? u.regiao : "todos");
-    let selSup = document.getElementById('dash-filtro-sup');
-    let valSup = selSup ? selSup.value : (u.cargo === "supervisor" ? u.id : "todos");
-    let selProm = document.getElementById('dash-filtro-prom');
-    let valPromAtual = selProm ? selProm.value : "todos";
-
-    if (selSup) {
-        let htmlSup = '<option value="todos">Todos os Supervisores</option>';
-        for (let k in bancoUsuarios) {
-            let user = bancoUsuarios[k];
-            let isSup = (user.cargo === "supervisor" || user.cargo === "gestor" || user.cargo === "regional" || k === "master");
-            if (isSup && podeGerenciar(u, k)) {
-                if (valReg !== "todos" && (user.regiao || "").toUpperCase() !== valReg.toUpperCase()) continue;
-                htmlSup += `<option value="${k}">${user.nome || k}</option>`;
-            }
+    if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") {
+        document.getElementById('container-filtro-supervisor-dash').style.display = "block"; document.getElementById('container-filtro-promotor-dash').style.display = "block";
+        if(selSup.options.length <= 1) { 
+            let htmlOp = '<option value="todos">Todas as Regiões (Geral)</option>'; 
+            for(let k in bancoUsuarios) { 
+                let isSupervisor = (bancoUsuarios[k].cargo === "supervisor" || bancoUsuarios[k].cargo === "gestor" || bancoUsuarios[k].cargo === "regional" || k === "master");
+                if (isSupervisor) {
+                    let temEquipe = Object.keys(bancoUsuarios).some(p => bancoUsuarios[p].cargo === "promotor" && bancoUsuarios[p].criadoPor === k);
+                    if(temEquipe && podeGerenciar(usuarioLogado, k)) {
+                        htmlOp += `<option value="${k}">Equipe: ${bancoUsuarios[k].nome || k}</option>`; 
+                    }
+                } 
+            } 
+            let temOrfaos = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && (!bancoUsuarios[k].criadoPor || !bancoUsuarios[bancoUsuarios[k].criadoPor]));
+            if (temOrfaos && (usuarioLogado.id === "master" || usuarioLogado.cargo === "gestor")) htmlOp += `<option value="orfaos">Promotores Órfãos</option>`;
+            selSup.innerHTML = htmlOp; 
         }
-        let temOrfaos = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && (!bancoUsuarios[k].criadoPor || !bancoUsuarios[bancoUsuarios[k].criadoPor]));
-        if (temOrfaos && (u.id === "master" || u.cargo === "gestor") && valReg === "todos") {
-            htmlSup += `<option value="orfaos">⚠️ Promotores Órfãos</option>`;
-        }
-        selSup.innerHTML = htmlSup;
-        if (Array.from(selSup.options).some(opt => opt.value === valSup)) selSup.value = valSup; else valSup = "todos";
-    }
+    } else if (usuarioLogado.cargo === "supervisor") { document.getElementById('container-filtro-supervisor-dash').style.display = "none"; document.getElementById('container-filtro-promotor-dash').style.display = "block"; } 
+    else { document.getElementById('container-filtro-supervisor-dash').style.display = "none"; document.getElementById('container-filtro-promotor-dash').style.display = "none"; }
 
-    if (selProm) {
-        let htmlProm = '<option value="todos">Todos os Promotores</option>';
-        for (let k in bancoUsuarios) {
-            let prom = bancoUsuarios[k];
-            if (prom.cargo === "promotor" && podeGerenciar(u, k)) {
-                let supDesteProm = prom.criadoPor;
-                let isOrfao = (!supDesteProm || !bancoUsuarios[supDesteProm]);
-                
-                if (valSup === "orfaos" && !isOrfao) continue;
-                if (valSup !== "todos" && valSup !== "orfaos" && supDesteProm !== valSup) continue;
-                
-                if (valReg !== "todos") {
-                    let regiaoDoProm = prom.regiao || (bancoUsuarios[supDesteProm] ? bancoUsuarios[supDesteProm].regiao : "");
-                    if ((regiaoDoProm || "").toUpperCase() !== valReg.toUpperCase()) continue;
-                }
-
-                htmlProm += `<option value="${k}">${prom.nome || k}</option>`;
-            }
-        }
-        selProm.innerHTML = htmlProm;
-        if (Array.from(selProm.options).some(opt => opt.value === valPromAtual)) selProm.value = valPromAtual;
-    }
-}
-
-function obterEscopoPromotoresDash() {
-    let escopo = [];
-    let u = usuarioLogado;
+    if (document.getElementById('filtro-promotor-dash').options.length <= 1) { atualizarFiltroPromotorDash(); }
     
-    let elReg = document.getElementById('dash-filtro-reg');
-    let valReg = elReg ? elReg.value : (u.cargo === "regional" ? u.regiao : "todos");
-    
-    let elSup = document.getElementById('dash-filtro-sup');
-    let valSup = elSup ? elSup.value : (u.cargo === "supervisor" ? u.id : "todos");
-    
-    let elProm = document.getElementById('dash-filtro-prom');
-    let valProm = elProm ? elProm.value : (u.cargo === "promotor" ? u.id : "todos");
-
-    for (let k in bancoUsuarios) {
-        let prom = bancoUsuarios[k];
-        if (prom.cargo === "promotor" && podeGerenciar(u, k)) {
-            if (valProm !== "todos" && k !== valProm) continue;
-            
-            let supId = prom.criadoPor;
-            let isOrfao = (!supId || !bancoUsuarios[supId]);
-            if (valSup === "orfaos" && !isOrfao) continue;
-            if (valSup !== "todos" && valSup !== "orfaos" && supId !== valSup) continue;
-            
-            if (valReg !== "todos") {
-                let regiao = prom.regiao || (bancoUsuarios[supId] ? bancoUsuarios[supId].regiao : "");
-                if ((regiao || "").toUpperCase() !== valReg.toUpperCase()) continue;
-            }
-            escopo.push(k);
-        }
-    }
-    return escopo;
-}
-
-function atualizarDadosDash() {
     document.getElementById("total-comissao-geral").innerText = "R$ ****";
     document.getElementById("icone-olho-comissao").innerHTML = '<i data-lucide="eye" style="margin:0;"></i>'; loadIcons();
     
-    const selDash = document.getElementById("seletor-mes-dash"); 
-    let url = URL_DA_SUA_API + "?_t=" + new Date().getTime() + (selDash && selDash.value ? "&mes=" + encodeURIComponent(selDash.value) : "");
+    const selDash = document.getElementById("seletor-mes-dash"); let url = URL_DA_SUA_API + "?_t=" + new Date().getTime() + (selDash && selDash.value ? "&mes=" + encodeURIComponent(selDash.value) : "");
     document.getElementById("total-vendas-geral").innerText = "..."; 
     
     fetch(url)
@@ -913,12 +1465,7 @@ function atualizarDadosDash() {
             if (res.meses && selDash && selDash.options.length <= 1) {
                 selDash.innerHTML = res.meses.map(m => `<option value="${m}" ${m === res.mesAtual ? "selected" : ""}>Mês: ${m}</option>`).join("");
             }
-            try {
-                gerarGraficosDash(res.dados || []); 
-            } catch(errG) {
-                console.error("Erro interno nos gráficos:", errG);
-                document.getElementById("total-vendas-geral").innerText = "Erro Gráfico";
-            }
+            gerarGraficos(res.dados); 
         } else { document.getElementById("total-vendas-geral").innerText = "Erro!"; }
     })
     .catch(e => { console.error("Erro no Dashboard:", e); document.getElementById("total-vendas-geral").innerText = "Erro de Rede"; });
@@ -929,69 +1476,99 @@ function toggleComissao() {
     if (elComissao.innerText === "R$ ****") { elComissao.innerText = elComissao.dataset.valor || "R$ 0,00"; iconeOlho.innerHTML = '<i data-lucide="eye-off" style="margin:0;"></i>'; } else { elComissao.innerText = "R$ ****"; iconeOlho.innerHTML = '<i data-lucide="eye" style="margin:0;"></i>'; } loadIcons();
 }
 
-function recriarCanvasSeguro(idWrap, idCanvas) {
-    let wrap = document.getElementById(idWrap);
-    if (!wrap) return null;
-    wrap.innerHTML = `<canvas id="${idCanvas}"></canvas>`;
-    let canvasEl = document.getElementById(idCanvas);
-    return canvasEl ? canvasEl.getContext('2d') : null;
+function isCampaignActiveInMonth(startStr, endStr, mesSelecionado) {
+    if (!startStr && !endStr) return true; 
+    let partes = mesSelecionado.split('/'); if(partes.length < 2) return true;
+    let m = parseInt(partes[0], 10); let y = parseInt(partes[1], 10);
+    
+    let dtStart = startStr ? new Date(startStr + "T00:00:00") : new Date(2000, 0, 1);
+    let dtEnd = endStr ? new Date(endStr + "T23:59:59") : new Date(2100, 0, 1);
+    let startOfMonth = new Date(y, m - 1, 1);
+    let endOfMonth = new Date(y, m, 0, 23, 59, 59);
+    
+    return dtStart <= endOfMonth && dtEnd >= startOfMonth;
 }
 
-function gerarGraficosDash(dadosVendas) {
-    let u = usuarioLogado;
-    let elReg = document.getElementById('dash-filtro-reg'); let valReg = elReg ? elReg.value : "todos";
-    let elSup = document.getElementById('dash-filtro-sup'); let valSup = elSup ? elSup.value : "todos";
-    let elProm = document.getElementById('dash-filtro-prom'); let valProm = elProm ? elProm.value : "todos";
+function gerarGraficos(dadosVendas) {
+    if (!dadosVendas) dadosVendas = [];
+    let totalGeral = 0; let vendasPorLoja = {}; let vendasPorModelo = {}; let metricas = {}; let modelosFocoVendidos = {};
+    let rankingPorLoja = {}; 
     
-    if (u.cargo === "regional") valReg = u.regiao;
-    if (u.cargo === "supervisor") valSup = u.id;
-    if (u.cargo === "promotor") valProm = u.id;
-
-    let escopoPermitidos = obterEscopoPromotoresDash();
-    let agrupamento = (u.cargo === "promotor" || valProm !== "todos" || (valSup !== "todos" && valSup !== "orfaos")) ? "promotor" : "supervisor";
-
-    let metricas = {};
-    let vendasPorLoja = {};
-    let vendasPorModelo = {};
-    let modelosFocoVendidos = {};
-    let rankingPorLoja = {};
-    let totalGeral = 0;
-
-    function definirBucket(idProm) {
-        let p = bancoUsuarios[idProm];
-        if (!p) return "Desconhecido";
-        
-        if (agrupamento === "promotor") {
-            return p.nome || idProm;
-        } else {
-            let pSup = p.criadoPor || "orfaos";
-            let isOrfao = (pSup === "orfaos" || !bancoUsuarios[pSup]);
-            return isOrfao ? "⚠️ Órfãos" : (bancoUsuarios[pSup].nome || "Equipe " + pSup);
-        }
+    let supervisorFoco = "todos"; let promotorFoco = "todos";
+    if (usuarioLogado.cargo === "promotor") { supervisorFoco = bancoUsuarios[usuarioLogado.id].criadoPor || "todos"; promotorFoco = usuarioLogado.id; } 
+    else {
+        if (usuarioLogado.cargo === "supervisor") supervisorFoco = usuarioLogado.id; else if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") supervisorFoco = document.getElementById('filtro-supervisor-dash').value;
+        if (document.getElementById('container-filtro-promotor-dash').style.display !== "none") { promotorFoco = document.getElementById('filtro-promotor-dash').value || "todos"; }
     }
 
-    escopoPermitidos.forEach(pId => {
-        let p = bancoUsuarios[pId];
-        let bucket = definirBucket(pId);
+    let agrupamento = (usuarioLogado.cargo === "promotor" || promotorFoco !== "todos") ? "promotor" : "supervisor";
+    let visualizarVendedores = (promotorFoco !== "todos"); 
+
+    if (agrupamento === "supervisor") { 
+        for (let k in bancoUsuarios) { 
+            let isSupervisor = (bancoUsuarios[k].cargo === "supervisor" || bancoUsuarios[k].cargo === "gestor" || bancoUsuarios[k].cargo === "regional" || k === "master");
+            if (isSupervisor) { 
+                if(podeGerenciar(usuarioLogado, k)) { 
+                    let nomeSup = bancoUsuarios[k].nome || k; 
+                    metricas[nomeSup] = { login: k, nome: nomeSup, metaPremium: 0, metaIndividual: 0, realizadoPremium: 0, realizadoGeral: 0, modelosPremiumVendidos: {}, modelosVendidosGeral: {}, comissaoAcumulada: 0 }; 
+                } 
+            } 
+        } 
+        metricas["Órfãos"] = { login: "orfaos", nome: "Órfãos", metaPremium: 0, metaIndividual: 0, realizadoPremium: 0, realizadoGeral: 0, modelosPremiumVendidos: {}, modelosVendidosGeral: {}, comissaoAcumulada: 0 };
         
-        let supKey = p.criadoPor || "geral";
-        if (!p.criadoPor || !bancoUsuarios[p.criadoPor]) supKey = "geral";
-        
-        let taxaSup = taxasCoparticipacao[supKey] || taxasCoparticipacao["geral"] || 25;
-        let metaInd = Number(p.meta) || 0;
-        
-        if (!metricas[bucket]) {
-            metricas[bucket] = { 
-                nome: bucket, loginSupConfig: supKey, 
-                metaIndividual: 0, metaPremium: 0, 
-                realizadoGeral: 0, realizadoPremium: 0, 
-                modelosPremiumVendidos: {}, comissaoAcumulada: 0,
-            };
+        for (let k in bancoUsuarios) {
+            if (bancoUsuarios[k].cargo === "promotor") {
+                let supDoPromotor = bancoUsuarios[k].criadoPor;
+                let isOrfao = (!supDoPromotor || !bancoUsuarios[supDoPromotor]);
+                
+                if (supervisorFoco !== "todos") {
+                    if (supervisorFoco === "orfaos" && !isOrfao) continue;
+                    if (supervisorFoco !== "orfaos" && supDoPromotor !== supervisorFoco) continue;
+                }
+                
+                let supKey = supDoPromotor || "geral";
+                if (isOrfao) supKey = "orfaos";
+                let nomeSup = isOrfao ? "Órfãos" : (bancoUsuarios[supKey]?.nome || supKey);
+                
+                let taxaSup = taxasCoparticipacao[supKey] || taxasCoparticipacao["geral"] || 25;
+                let metaIndPromotor = bancoUsuarios[k].meta || 0;
+                
+                if(metricas[nomeSup]) { 
+                    metricas[nomeSup].metaPremium += (metaIndPromotor * (taxaSup / 100)); 
+                    metricas[nomeSup].metaIndividual += metaIndPromotor; 
+                }
+            }
         }
-        
-        metricas[bucket].metaIndividual += metaInd;
-        metricas[bucket].metaPremium += (metaInd * (taxaSup / 100));
-    });
+    } else {
+        for (let k in bancoUsuarios) {
+            if (bancoUsuarios[k].cargo === "promotor") {
+                let supDoPromotor = bancoUsuarios[k].criadoPor;
+                let isOrfao = (!supDoPromotor || !bancoUsuarios[supDoPromotor]);
+
+                if (supervisorFoco !== "todos") {
+                    if (supervisorFoco === "orfaos" && !isOrfao) continue;
+                    if (supervisorFoco !== "orfaos" && supDoPromotor !== supervisorFoco) continue;
+                }
+                if (promotorFoco !== "todos" && k !== promotorFoco) continue;
+                if (usuarioLogado.cargo !== "promotor" && !podeGerenciar(usuarioLogado, k)) continue;
+
+                let pNome = bancoUsuarios[k].nome || k;
+                let supKey = isOrfao ? "geral" : supDoPromotor;
+                let taxaSup = taxasCoparticipacao[supKey] || taxasCoparticipacao["geral"] || 25;
+                metricas[pNome] = { 
+                    login: k, 
+                    nome: pNome, 
+                    metaPremium: (bancoUsuarios[k].meta || 0) * (taxaSup / 100), 
+                    metaIndividual: bancoUsuarios[k].meta || 0, 
+                    realizadoPremium: 0, 
+                    realizadoGeral: 0, 
+                    modelosPremiumVendidos: {}, 
+                    modelosVendidosGeral: {}, 
+                    comissaoAcumulada: 0 
+                };
+            }
+        }
+    }
 
     dadosVendas.forEach(row => {
         let rowVendedor = getVal(row, ['vendedor', 'vend', 'promotor']);
@@ -1004,92 +1581,138 @@ function gerarGraficosDash(dadosVendas) {
         let qtd = lista.length; 
         if (qtd === 0) return;
         
-        let promotoresImpactados = new Set();
-        
+        let pertenceAoEscopo = false; let promotoresImpactados = new Set(); let supervisoresImpactados = new Set();
+
         if (loja !== "Outras") {
-            escopoPermitidos.forEach(k => { if (bancoUsuarios[k].lojasPermitidas && bancoUsuarios[k].lojasPermitidas.some(l => l.trim().toLowerCase() === loja.toLowerCase())) promotoresImpactados.add(k); });
+            for (let k in bancoUsuarios) {
+                let u = bancoUsuarios[k];
+                if (u.cargo === "promotor" && u.lojasPermitidas && u.lojasPermitidas.some(l => l.trim().toLowerCase() === loja.toLowerCase())) {
+                    let isOrfao = (!u.criadoPor || !bancoUsuarios[u.criadoPor]);
+                    let passaFiltroSup = (supervisorFoco === "todos" || (supervisorFoco === "orfaos" && isOrfao) || u.criadoPor === supervisorFoco);
+                    let passaFiltroProm = (promotorFoco === "todos" || k === promotorFoco);
+                    if (passaFiltroSup && passaFiltroProm && (podeGerenciar(usuarioLogado, k) || k === usuarioLogado.id)) {
+                        pertenceAoEscopo = true; promotoresImpactados.add(k); if(u.criadoPor) supervisoresImpactados.add(u.criadoPor); 
+                    }
+                }
+            }
         } else {
-            escopoPermitidos.forEach(k => { if (vendNome.toLowerCase().includes((bancoUsuarios[k].nome||k).toLowerCase())) promotoresImpactados.add(k); });
+            for (let k in bancoUsuarios) {
+                let u = bancoUsuarios[k];
+                if (u.cargo === "promotor" && vendNome.toLowerCase().includes((u.nome||k).toLowerCase())) {
+                    let isOrfao = (!u.criadoPor || !bancoUsuarios[u.criadoPor]);
+                    let passaFiltroSup = (supervisorFoco === "todos" || (supervisorFoco === "orfaos" && isOrfao) || u.criadoPor === supervisorFoco);
+                    let passaFiltroProm = (promotorFoco === "todos" || k === promotorFoco);
+                    if (passaFiltroSup && passaFiltroProm && (podeGerenciar(usuarioLogado, k) || k === usuarioLogado.id)) {
+                        pertenceAoEscopo = true; promotoresImpactados.add(k); if(u.criadoPor) supervisoresImpactados.add(u.criadoPor); 
+                    }
+                }
+            }
         }
         
-        if (promotoresImpactados.size === 0) {
-            if (valReg === "todos" && valSup === "todos" && valProm === "todos" && (u.cargo === "master" || u.cargo === "gestor")) {
-                promotoresImpactados.add("fantasma_sistema"); 
-            } else { return; }
+        if (!pertenceAoEscopo && supervisorFoco === "todos" && promotorFoco === "todos" && (usuarioLogado.cargo === "master" || usuarioLogado.cargo === "gestor")) {
+            pertenceAoEscopo = true;
         }
 
-        totalGeral += qtd; 
-        vendasPorLoja[loja] = (vendasPorLoja[loja] || 0) + qtd;
+        if (!pertenceAoEscopo) return;
         
-        let vizVendedores = (valProm !== "todos" || valSup !== "todos" || u.cargo === "supervisor" || u.cargo === "promotor");
-        if (vizVendedores && promotoresImpactados.size > 0 && !promotoresImpactados.has("fantasma_sistema")) {
+        totalGeral += qtd; 
+        if (!vendasPorLoja[loja]) vendasPorLoja[loja] = 0; 
+        vendasPorLoja[loja] += qtd;
+        
+        if (visualizarVendedores) {
             if (!rankingPorLoja[loja]) rankingPorLoja[loja] = {};
-            vendNome.split(" e ").forEach(vN => { 
-                let v = vN.trim(); 
-                if (!rankingPorLoja[loja][v]) rankingPorLoja[loja][v] = { qtdGeral: 0, qtdPremium: 0 }; 
-                rankingPorLoja[loja][v].qtdGeral += 1; 
-            });
+            let multVend = vendNome.split(" e ");
+            multVend.forEach(vN => { let v = vN.trim(); if (!rankingPorLoja[loja][v]) rankingPorLoja[loja][v] = { qtdGeral: 0, qtdPremium: 0 }; rankingPorLoja[loja][v].qtdGeral += 1; });
         }
 
         lista.forEach(ap => { 
             let chaveKey = extrairChaveAparelho(ap); 
             let modeloFormatado = (mapaEmojis[chaveKey] ? mapaEmojis[chaveKey] + " " : "") + chaveKey.toUpperCase();
             
-            vendasPorModelo[modeloFormatado] = (vendasPorModelo[modeloFormatado] || 0) + 1; 
+            if (!vendasPorModelo[modeloFormatado]) vendasPorModelo[modeloFormatado] = 0; 
+            vendasPorModelo[modeloFormatado] += 1; 
             
-            promotoresImpactados.forEach(pKey => {
-                if (pKey === "fantasma_sistema") return; 
-                
-                let p = bancoUsuarios[pKey];
-                if (!p) return; 
+            let checkPrem = ehPremium(ap, supervisorFoco !== "todos" ? supervisorFoco : "geral");
+            if (visualizarVendedores && checkPrem) { vendNome.split(" e ").forEach(vN => { rankingPorLoja[loja][vN.trim()].qtdPremium += 1; }); }
 
-                let supKey = p.criadoPor || "geral";
-                let checkPrem = ehPremium(ap, supKey);
-                let bucket = definirBucket(pKey);
+            if (agrupamento === "supervisor") {
+                let treatedSupervisors = new Set();
+                promotoresImpactados.forEach(pk => {
+                    let u = bancoUsuarios[pk];
+                    let sKey = u.criadoPor;
+                    if (!sKey || !bancoUsuarios[sKey]) sKey = "orfaos";
+                    treatedSupervisors.add(sKey);
+                });
 
-                if (metricas[bucket]) {
-                    metricas[bucket].realizadoGeral += 1;
-                    metricas[bucket].modelosVendidosGeral[chaveKey] = (metricas[bucket].modelosVendidosGeral[chaveKey] || 0) + 1;
-                    if (checkPrem) {
-                        metricas[bucket].realizadoPremium += 1;
-                        modelosFocoVendidos[modeloFormatado] = (modelosFocoVendidos[modeloFormatado] || 0) + 1;
-                        metricas[bucket].modelosPremiumVendidos[chaveKey] = (metricas[bucket].modelosPremiumVendidos[chaveKey] || 0) + 1;
+                treatedSupervisors.forEach(supKey => {
+                    let nomeSup = (supKey === "orfaos") ? "Órfãos" : (bancoUsuarios[supKey]?.nome || supKey);
+                    if (metricas[nomeSup]) {
+                        metricas[nomeSup].realizadoGeral += 1; 
+                        metricas[nomeSup].modelosVendidosGeral[chaveKey] = (metricas[nomeSup].modelosVendidosGeral[chaveKey] || 0) + 1;
+                        if (checkPrem) { 
+                            metricas[nomeSup].realizadoPremium += 1; modelosFocoVendidos[modeloFormatado] = (modelosFocoVendidos[modeloFormatado] || 0) + 1; metricas[nomeSup].modelosPremiumVendidos[chaveKey] = (metricas[nomeSup].modelosPremiumVendidos[chaveKey] || 0) + 1; 
+                        } 
                     }
-                }
-            });
-
-            if (vizVendedores && !promotoresImpactados.has("fantasma_sistema")) {
-                let checkPremForRank = ehPremium(ap, "geral");
-                if(checkPremForRank) { vendNome.split(" e ").forEach(vN => { rankingPorLoja[loja][vN.trim()].qtdPremium += 1; }); }
+                });
+            } else {
+                promotoresImpactados.forEach(pKey => {
+                    let userP = bancoUsuarios[pKey]; let pNome = userP ? (userP.nome || pKey) : pKey;
+                    if (metricas[pNome]) {
+                        metricas[pNome].realizadoGeral += 1;
+                        metricas[pNome].modelosVendidosGeral[chaveKey] = (metricas[pNome].modelosVendidosGeral[chaveKey] || 0) + 1;
+                        if (checkPrem) { 
+                            metricas[pNome].realizadoPremium += 1; modelosFocoVendidos[modeloFormatado] = (modelosFocoVendidos[modeloFormatado] || 0) + 1; metricas[pNome].modelosPremiumVendidos[chaveKey] = (metricas[pNome].modelosPremiumVendidos[chaveKey] || 0) + 1; 
+                        } 
+                    }
+                });
             }
         });
     });
 
+    if (metricas["Órfãos"] && metricas["Órfãos"].realizadoGeral === 0 && metricas["Órfãos"].metaIndividual === 0) {
+        delete metricas["Órfãos"];
+    }
+
     let mesFiltro = document.getElementById("seletor-mes-dash").value;
 
     Object.values(metricas).forEach(m => {
-        let comissaoUser = 0; 
-        let supKey = m.loginSupConfig || "geral";
+        let comissaoUser = 0; let supKey = m.login; 
+        if (m.login === "orfaos") supKey = "geral";
+        else if (bancoUsuarios[m.login] && bancoUsuarios[m.login].cargo === "promotor") { supKey = bancoUsuarios[m.login].criadoPor || "geral"; }
         
         let vComissaoSup = valoresComissao[supKey] || valoresComissao["geral"] || {}; 
         let niveisGlobais = vComissaoSup.niveis || [{ id: 'l1', meta: 0 }, { id: 'l2', meta: 10 }];
         let aparelhosCfg = vComissaoSup.aparelhos || {};
+        let campanhasAtivas = vComissaoSup.campanhasPersonalizadas || [];
 
         for(let modChave in m.modelosPremiumVendidos) {
             let qtdMod = m.modelosPremiumVendidos[modChave];
             let cfg = aparelhosCfg[modChave] || {}; 
+            
             let nivelAlcancado = 'l1'; 
             let maiorMeta = -1;
             
             niveisGlobais.forEach(nv => { 
                 let metaParaNivel = (cfg[nv.id + '_meta'] !== undefined && cfg[nv.id + '_meta'] !== "") ? Number(cfg[nv.id + '_meta']) : Number(nv.meta);
                 if (m.realizadoGeral >= metaParaNivel && metaParaNivel >= maiorMeta) { 
-                    nivelAlcancado = nv.id; maiorMeta = metaParaNivel; 
+                    nivelAlcancado = nv.id; 
+                    maiorMeta = metaParaNivel; 
                 } 
             });
+
             let payout = Number(cfg[nivelAlcancado]) || Number(cfg['l1']) || 0;
             comissaoUser += (qtdMod * payout);
         }
+
+        campanhasAtivas.forEach(camp => {
+            if (isCampaignActiveInMonth(camp.dataInicio, camp.dataFim, mesFiltro)) {
+                if (camp.promotorAlvo && camp.promotorAlvo !== 'todos' && camp.promotorAlvo !== m.login) { return; }
+                let qtdParaBater = 0;
+                if (camp.aparelho === 'todos') { qtdParaBater = m.realizadoPremium; } else { qtdParaBater = m.modelosVendidosGeral[camp.aparelho] || 0; }
+                if (qtdParaBater >= Number(camp.qtdMinima)) { comissaoUser += (qtdParaBater * Number(camp.bonus)); }
+            }
+        });
+
         m.comissaoAcumulada = comissaoUser;
     });
 
@@ -1110,26 +1733,24 @@ function gerarGraficosDash(dadosVendas) {
     elComissao.dataset.valor = valorFormatado;
     elComissao.innerText = "R$ ****"; document.getElementById("icone-olho-comissao").innerHTML = '<i data-lucide="eye" style="margin:0;"></i>'; loadIcons();
 
-    let pSup = aparelhosPremium[valSup !== "todos" ? valSup : "geral"] || aparelhosPremium["geral"] || {};
+    let supAlvoParaFoco = (supervisorFoco !== "todos") ? supervisorFoco : "geral";
+    let pSup = aparelhosPremium[supAlvoParaFoco]; if (!pSup || Object.keys(pSup).length === 0) pSup = aparelhosPremium["geral"] || {};
     let listaFocoAtuais = Object.keys(pSup).filter(k => pSup[k]).map(k => `<span style="display:inline-block; background:var(--bg-item); color:var(--cor-texto); padding:4px 8px; border-radius:6px; margin:2px; border: 1px solid var(--border-color); font-weight:bold;">${mapaEmojis[k] || ''} ${k.toUpperCase()}</span>`);
     document.getElementById("lista-foco-ativo-dash").innerHTML = listaFocoAtuais.length > 0 ? listaFocoAtuais.join("") : "<span style='color:var(--cor-secundaria); font-style:italic;'>Nenhum aparelho configurado como Foco.</span>";
 
-    let totalFocoVendidoGeral = Object.values(metricas).reduce((acc, m) => acc + (m.realizadoPremium || 0), 0); 
-    let metaFocoSomaGeral = Object.values(metricas).reduce((acc, m) => acc + (m.metaPremium || 0), 0);
-    let pctMetaFocoGeral = metaFocoSomaGeral > 0 ? ((totalFocoVendidoGeral / metaFocoSomaGeral) * 100).toFixed(1) : 0; 
-    let pctCopartGeral = totalGeral > 0 ? ((totalFocoVendidoGeral / totalGeral) * 100).toFixed(1) : 0;
+    let totalFocoVendidoGeral = Object.values(modelosFocoVendidos).reduce((a, b) => a + b, 0); let metaFocoSomaGeral = Object.values(metricas).reduce((acc, m) => acc + m.metaPremium, 0);
+    let pctMetaFocoGeral = metaFocoSomaGeral > 0 ? ((totalFocoVendidoGeral / metaFocoSomaGeral) * 100).toFixed(1) : 0; let pctCopartGeral = totalGeral > 0 ? ((totalFocoVendidoGeral / totalGeral) * 100).toFixed(1) : 0;
 
     let listaFocoHtml = ""; for(let mod in modelosFocoVendidos) { listaFocoHtml += `<span style="display:inline-block; background:var(--bg-item); color:#0086ff; padding:4px 8px; border-radius:6px; margin:2px; font-weight:bold; border: 1px solid var(--border-color);">${mod}: ${modelosFocoVendidos[mod]} un</span> `; }
     let htmlDetalhesCopart = `<div style="display: flex; flex-direction: column; gap: 8px;"><div style="display: flex; justify-content: space-between; font-size: 13px;"><span><i data-lucide="star" class="lucide-sm"></i> Foco Vendidos: <strong>${totalFocoVendidoGeral} un</strong></span><span style="color: #28a745; font-weight: bold;">Meta: ${pctMetaFocoGeral}%</span></div><div style="display: flex; justify-content: space-between; font-size: 13px;"><span><i data-lucide="pie-chart" class="lucide-sm"></i> Coparticipação Geral: <strong>${pctCopartGeral}%</strong></span></div><div style="margin-top: 5px;"><strong style="font-size: 11px; color: var(--cor-secundaria); display: block; margin-bottom: 3px;">Foco Vendidos no Período:</strong><div>${listaFocoHtml || "<span style='color:var(--cor-secundaria); font-style:italic;'>Nenhum foco vendido.</span>"}</div></div></div>`;
     document.getElementById("detalhe-coparticipacao-cards").innerHTML = htmlDetalhesCopart; loadIcons();
 
     let htmlRank = ""; 
-    let visualizarVendedoresCheck = (valProm !== "todos" || valSup !== "todos" || u.cargo === "supervisor" || u.cargo === "promotor");
     
-    if (visualizarVendedoresCheck) {
+    if (visualizarVendedores) {
         document.getElementById("titulo-ranking-dash").innerHTML = '<i data-lucide="award"></i> Ranking de Vendedores por Loja';
         let lojasDoRanking = Object.keys(rankingPorLoja).sort((a,b) => a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'}));
-        if (lojasDoRanking.length === 0) { htmlRank = "<span style='font-size:13px; color:var(--cor-secundaria);'>Nenhuma venda registrada no período.</span>"; } else {
+        if (lojasDoRanking.length === 0) { htmlRank = "<span style='font-size:13px; color:var(--cor-secundaria);'>Nenhuma venda registrada para este promotor.</span>"; } else {
             lojasDoRanking.forEach(lojaRank => {
                 htmlRank += `<h5 style="color: #0086ff; margin-top: 15px; margin-bottom: 5px; border-bottom: 2px solid var(--border-color); padding-bottom: 5px; text-align: left; font-size: 14px;"><i data-lucide="store" class="lucide-sm"></i> ${lojaRank}</h5>`;
                 let vendedoresDaLoja = rankingPorLoja[lojaRank]; let vendOrd = Object.keys(vendedoresDaLoja).sort((a,b) => vendedoresDaLoja[b].qtdGeral - vendedoresDaLoja[a].qtdGeral);
@@ -1143,154 +1764,53 @@ function gerarGraficosDash(dadosVendas) {
             });
         }
     } else {
-        document.getElementById("titulo-ranking-dash").innerHTML = (agrupamento === "promotor") ? '<i data-lucide="award"></i> Ranking de Promotores (vs Meta Individual)' : '<i data-lucide="award"></i> Ranking de Equipes (vs Meta)';
+        document.getElementById("titulo-ranking-dash").innerHTML = (agrupamento === "supervisor") ? '<i data-lucide="award"></i> Ranking de Equipes (vs Meta)' : '<i data-lucide="award"></i> Ranking de Promotores (vs Meta Individual)';
         let promOrd = Object.keys(metricas).sort((a,b) => metricas[b].realizadoGeral - metricas[a].realizadoGeral);
         let rNum = 1; let uQtd = -1;
         promOrd.forEach(p => {
             let m = metricas[p]; if(uQtd !== -1 && m.realizadoGeral < uQtd) rNum++; uQtd = m.realizadoGeral;
             let bC = rNum === 1 ? 'rank-1' : rNum === 2 ? 'rank-2' : rNum === 3 ? 'rank-3' : 'rank-outros';
             let metaAlvo = m.metaIndividual; let pctHit = metaAlvo > 0 ? ((m.realizadoGeral / metaAlvo) * 100).toFixed(1) : 0; let corHit = pctHit >= 100 ? '#28a745' : '#dc3545';
+            let labelMetaRanking = agrupamento === "supervisor" ? "Meta Acumulada" : "Meta Individual";
             let pctFocoVendedor = m.realizadoGeral > 0 ? ((m.realizadoPremium / m.realizadoGeral) * 100).toFixed(1) : 0;
-            htmlRank += `<div style="display:flex;flex-direction:column;padding:12px 0;border-bottom:1px dashed var(--border-color);"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><div style="display:flex;align-items:center;gap:10px;"><span class="badge-rank ${bC}">${rNum}º</span><strong style="font-size: 15px; color: var(--cor-texto);"><i data-lucide="${agrupamento === 'promotor' ? 'user' : 'users'}" class="lucide-sm"></i> ${p}</strong></div><span style="background:var(--bg-item);color:#0086ff;font-weight:bold;padding:4px 10px;border-radius:6px;font-size:14px; border: 1px solid var(--border-color);">${m.realizadoGeral} un</span></div><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--cor-secundaria);background:var(--bg-item);padding:4px 8px;border-radius:4px;"><span>🎯 Meta Acumulada: <strong style="color: var(--cor-texto);">${metaAlvo} un</strong></span><span style="color: ${corHit}; font-weight: bold;">${pctHit}% Concluído</span></div><div style="font-size:11px; color:var(--cor-secundaria); text-align:left; padding-left:4px; margin-top:2px;">Coparticipação Foco: <strong>${m.realizadoPremium} un</strong> (<span style="color:#28a745;">${pctFocoVendedor}%</span>)</div></div>`;
+            htmlRank += `<div style="display:flex;flex-direction:column;padding:12px 0;border-bottom:1px dashed var(--border-color);"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><div style="display:flex;align-items:center;gap:10px;"><span class="badge-rank ${bC}">${rNum}º</span><strong style="font-size: 15px; color: var(--cor-texto);"><i data-lucide="${agrupamento === 'supervisor' ? 'users' : 'user'}" class="lucide-sm"></i> ${p}</strong></div><span style="background:var(--bg-item);color:#0086ff;font-weight:bold;padding:4px 10px;border-radius:6px;font-size:14px; border: 1px solid var(--border-color);">${m.realizadoGeral} un</span></div><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--cor-secundaria);background:var(--bg-item);padding:4px 8px;border-radius:4px;"><span>🎯 ${labelMetaRanking}: <strong style="color: var(--cor-texto);">${metaAlvo} un</strong></span><span style="color: ${corHit}; font-weight: bold;">${pctHit}% Concluído</span></div><div style="font-size:11px; color:var(--cor-secundaria); text-align:left; padding-left:4px; margin-top:2px;">Coparticipação Foco: <strong>${m.realizadoPremium} un</strong> (<span style="color:#28a745;">${pctFocoVendedor}%</span>)</div></div>`;
         });
     }
-    document.getElementById("lista-ranking-promotores").innerHTML = htmlRank || "<span style='font-size:13px; color:var(--cor-secundaria);'>Nenhum dado encontrado no filtro.</span>"; loadIcons();
+    document.getElementById("lista-ranking-promotores").innerHTML = htmlRank || "<span style='font-size:13px; color:var(--cor-secundaria);'>Nenhuma venda na região selecionada.</span>"; loadIcons();
 
-    if (chartCoparticipacao) { chartCoparticipacao.destroy(); chartCoparticipacao = null; }
-    if (chartCapa) { chartCapa.destroy(); chartCapa = null; }
-    if (chartLojas) { chartLojas.destroy(); chartLojas = null; }
-    if (chartModelos) { chartModelos.destroy(); chartModelos = null; }
-    if (chartMetaGeral) { chartMetaGeral.destroy(); chartMetaGeral = null; }
+    if (chartCoparticipacao) chartCoparticipacao.destroy(); if (chartCapa) chartCapa.destroy(); if (chartLojas) chartLojas.destroy(); if (chartModelos) chartModelos.destroy();
     
-    let containerDynamicID = 'container-graficos-dinamicos-fix';
-    let containerDash = document.getElementById(containerDynamicID);
-    
-    if (!containerDash) {
-        let elAncora = document.getElementById('detalhe-coparticipacao-cards').parentElement;
-        elAncora.insertAdjacentHTML('afterend', `<div id="${containerDynamicID}"></div>`);
-        containerDash = document.getElementById(containerDynamicID);
-        
-        let wrapsAntigos = document.querySelectorAll('div[id^="wrap-grafico"]:not(#' + containerDynamicID + ' div)');
-        wrapsAntigos.forEach(w => w.parentElement.parentElement.style.display = 'none');
-    }
-    
-    let widthProm = Math.max(100, Object.keys(metricas).length * 25); 
+    let corTextoGrafico = document.body.classList.contains('dark-mode') ? '#e0e0e0' : '#666'; Chart.defaults.color = corTextoGrafico;
+    const pluginDatalabels = ChartDataLabels; let labelsProm = Object.keys(metricas);
+    let maxMeta = Math.max(...labelsProm.map(p => metricas[p].metaPremium)) || 10;
 
-    let htmlGraficosForcados = `
-        <div class="bloco-grafico-gerado" style="background: var(--bg-container); padding: 20px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 12px var(--shadow-color); border: 1px solid var(--border-color);">
-            <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="target" style="color:#0086ff;"></i> Meta Geral vs Realizado</h4>
-            <div style="width: 100%; overflow-x: auto; overflow-y: hidden;">
-                <div id="wrap-graficoMetaGeral" style="position: relative; height: 350px; min-width: ${widthProm}%;">
-                    <canvas id="graficoMetaGeral"></canvas>
-                </div>
-            </div>
-        </div>
-        
-        <div class="bloco-grafico-gerado" style="background: var(--bg-container); padding: 20px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 12px var(--shadow-color); border: 1px solid var(--border-color);">
-            <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="star" style="color:#ffc107;"></i> Meta Foco vs Realizado</h4>
-            <div style="width: 100%; overflow-x: auto; overflow-y: hidden;">
-                <div id="wrap-graficoMetaPremiumCapa" style="position: relative; height: 350px; min-width: ${widthProm}%;">
-                    <canvas id="graficoMetaPremiumCapa"></canvas>
-                </div>
-            </div>
-        </div>
-        
-        <div class="bloco-grafico-gerado" style="background: var(--bg-container); padding: 20px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 12px var(--shadow-color); border: 1px solid var(--border-color);">
-            <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="percent" style="color:#17a2b8;"></i> Coparticipação Premium (%)</h4>
-            <div style="width: 100%; overflow-x: auto; overflow-y: hidden;">
-                <div id="wrap-graficoCoparticipacaoPromotores" style="position: relative; height: 350px; min-width: ${widthProm}%;">
-                    <canvas id="graficoCoparticipacaoPromotores"></canvas>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    containerDash.innerHTML = htmlGraficosForcados;
-    loadIcons();
+    let widthProm = Math.max(100, labelsProm.length * 18); 
+    document.getElementById('wrap-graficoMetaPremiumCapa').style.minWidth = widthProm + '%';
+    document.getElementById('wrap-graficoCoparticipacaoPromotores').style.minWidth = widthProm + '%';
 
-    let corTextoGrafico = document.body.classList.contains('dark-mode') ? '#e0e0e0' : '#666'; 
-    Chart.defaults.color = corTextoGrafico;
-    const pluginDatalabels = ChartDataLabels; 
-    
-    let labelsProm = Object.keys(metricas);
-    if (labelsProm.length === 0) {
-        labelsProm = ["Sem Dados"];
-        metricas["Sem Dados"] = { metaPremium: 0, metaIndividual: 0, realizadoPremium: 0, realizadoGeral: 0 };
-    }
+    const ctxCapa = document.getElementById('graficoMetaPremiumCapa').getContext('2d');
+    chartCapa = new Chart(ctxCapa, {
+        type: 'bar', plugins: [pluginDatalabels],
+        data: { labels: labelsProm, datasets: [{ label: 'Meta Foco (un)', data: labelsProm.map(p => Math.round(metricas[p].metaPremium * 10) / 10), backgroundColor: '#c0c0c0' }, { label: 'Realizado Foco', data: labelsProm.map(p => metricas[p].realizadoPremium), backgroundColor: '#ffc107' }]},
+        options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { position: 'bottom' }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { if (ctx.datasetIndex === 0) return val + ' un'; let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; let pct = m.metaPremium > 0 ? ((val / m.metaPremium) * 100).toFixed(1) : 0; return [`${val} un`, `(${pct}%)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { y: { beginAtZero: true, suggestedMax: maxMeta * 1.3 } } }
+    });
 
-    let maxMetaGeral = Math.max(...labelsProm.map(p => metricas[p].metaIndividual)) || 10;
-    let maxMetaFoco = Math.max(...labelsProm.map(p => metricas[p].metaPremium)) || 10;
+    const ctxCopart = document.getElementById('graficoCoparticipacaoPromotores').getContext('2d');
+    chartCoparticipacao = new Chart(ctxCopart, {
+        type: 'bar', plugins: [pluginDatalabels],
+        data: { labels: labelsProm, datasets: [{ label: '% Coparticipação', data: labelsProm.map(p => metricas[p].realizadoGeral > 0 ? ((metricas[p].realizadoPremium / metricas[p].realizadoGeral) * 100).toFixed(1) : 0), backgroundColor: '#0086ff' }] },
+        options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { display: false }, tooltip: { padding: 12, callbacks: { label: function(context) { let p = context.chart.data.labels[context.dataIndex]; let m = metricas[p]; let linhas = [`Coparticipação: ${context.raw}% (${m.realizadoPremium} de ${m.realizadoGeral} un)`]; if (m.realizadoPremium > 0) { linhas.push('-------------------------'); linhas.push('Aparelhos Foco Vendidos:'); for (let mod in m.modelosPremiumVendidos) { linhas.push(`• ${m.modelosPremiumVendidos[mod]}x ${mod}`); } } else { linhas.push('-------------------------'); linhas.push('Nenhum aparelho foco vendido.'); } return linhas; } } }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; return [`${val}%`, `(${m.realizadoPremium} de ${m.realizadoGeral} un)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { y: { beginAtZero: true, suggestedMax: 100 } } }
+    });
 
-    // 1. GRÁFICO: META GERAL
-    let elGeralCanvas = document.getElementById('graficoMetaGeral');
-    if (elGeralCanvas) {
-        const ctxGeral = elGeralCanvas.getContext('2d');
-        chartMetaGeral = new Chart(ctxGeral, {
-            type: 'bar', plugins: [pluginDatalabels],
-            data: { 
-                labels: labelsProm, 
-                datasets: [
-                    { label: 'Meta Total (un)', data: labelsProm.map(p => Number(Math.round(metricas[p].metaIndividual * 10) / 10) || 0), backgroundColor: '#c0c0c0' }, 
-                    { label: 'Realizado Total', data: labelsProm.map(p => Number(metricas[p].realizadoGeral) || 0), backgroundColor: '#0086ff' }
-                ]
-            },
-            options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { position: 'bottom', labels:{color:corTextoGrafico} }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { if (ctx.datasetIndex === 0) return val + ' un'; let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; let pct = m.metaIndividual > 0 ? ((val / m.metaIndividual) * 100).toFixed(1) : 0; return [`${val} un`, `(${pct}%)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { x:{ticks:{color:corTextoGrafico}}, y: { beginAtZero: true, suggestedMax: maxMetaGeral * 1.3, ticks:{color:corTextoGrafico} } } }
-        });
-    }
-
-    // 2. GRÁFICO: META FOCO
-    let elFocoCanvas = document.getElementById('graficoMetaPremiumCapa');
-    if (elFocoCanvas) {
-        const ctxCapa = elFocoCanvas.getContext('2d');
-        chartCapa = new Chart(ctxCapa, {
-            type: 'bar', plugins: [pluginDatalabels],
-            data: { 
-                labels: labelsProm, 
-                datasets: [
-                    { label: 'Meta Foco (un)', data: labelsProm.map(p => Number(Math.round(metricas[p].metaPremium * 10) / 10) || 0), backgroundColor: '#c0c0c0' }, 
-                    { label: 'Realizado Foco', data: labelsProm.map(p => Number(metricas[p].realizadoPremium) || 0), backgroundColor: '#ffc107' }
-                ]
-            },
-            options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { position: 'bottom', labels:{color:corTextoGrafico} }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { if (ctx.datasetIndex === 0) return val + ' un'; let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; let pct = m.metaPremium > 0 ? ((val / m.metaPremium) * 100).toFixed(1) : 0; return [`${val} un`, `(${pct}%)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { x:{ticks:{color:corTextoGrafico}}, y: { beginAtZero: true, suggestedMax: maxMetaFoco * 1.3, ticks:{color:corTextoGrafico} } } }
-        });
-    }
-
-    // 3. GRÁFICO: COPARTICIPAÇÃO
-    let elCopartCanvas = document.getElementById('graficoCoparticipacaoPromotores');
-    if (elCopartCanvas) {
-        const ctxCopart = elCopartCanvas.getContext('2d');
-        chartCoparticipacao = new Chart(ctxCopart, {
-            type: 'bar', plugins: [pluginDatalabels],
-            data: { 
-                labels: labelsProm, 
-                datasets: [
-                    { label: '% Coparticipação', data: labelsProm.map(p => metricas[p].realizadoGeral > 0 ? Number(((metricas[p].realizadoPremium / metricas[p].realizadoGeral) * 100).toFixed(1)) : 0), backgroundColor: '#17a2b8' }
-                ] 
-            },
-            options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { display: false }, tooltip: { padding: 12, callbacks: { label: function(context) { let p = context.chart.data.labels[context.dataIndex]; let m = metricas[p]; let linhas = [`Coparticipação: ${context.raw}% (${m.realizadoPremium} de ${m.realizadoGeral} un)`]; if (m.realizadoPremium > 0) { linhas.push('-------------------------'); linhas.push('Aparelhos Foco Vendidos:'); for (let mod in m.modelosPremiumVendidos) { linhas.push(`• ${m.modelosPremiumVendidos[mod]}x ${mod}`); } } else { linhas.push('-------------------------'); linhas.push('Nenhum aparelho foco vendido.'); } return linhas; } } }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; return [`${val}%`, `(${m.realizadoPremium} de ${m.realizadoGeral} un)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { x:{ticks:{color:corTextoGrafico}}, y: { beginAtZero: true, suggestedMax: 100, ticks:{color:corTextoGrafico} } } }
-        });
-    }
-
-    // 4. GRÁFICO DE LOJAS
     let lojasSort = Object.keys(vendasPorLoja).sort((a,b) => a.localeCompare(b, undefined, {numeric:true, sensitivity:'base'}));
-    if (lojasSort.length === 0) lojasSort = ["Nenhuma Loja"];
-    
-    let ctxLojas = recriarCanvasSeguro('wrap-graficoVendasLoja', 'graficoVendasLoja');
-    if (ctxLojas) {
-        document.getElementById('wrap-graficoVendasLoja').style.minWidth = Math.max(100, lojasSort.length * 18) + '%';
-        chartLojas = new Chart(ctxLojas, { type: 'bar', plugins: [pluginDatalabels], data: { labels: lojasSort, datasets: [{ data: lojasSort.map(l => Number(vendasPorLoja[l]) || 0), backgroundColor: '#28a745', borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 20 } }, scales: { x: { ticks: { display: false }, grid: { display: false } }, y: { beginAtZero: true } }, plugins: { legend: { display: false }, tooltip: { padding: 12, callbacks: { title: function(context) { return '🏪 ' + context[0].label; }, afterTitle: function(context) { return '👤 Promotor: ' + getPromotorDaLoja(context[0].label); }, label: function(context) { return 'Total Vendido: ' + context.raw + ' un'; } } }, datalabels: { anchor: 'end', align: 'top', color: corTextoGrafico, font: { weight: 'bold' }, formatter: (val) => val + ' un' } } } });
-    }
+    let widthLojas = Math.max(100, lojasSort.length * 18); document.getElementById('wrap-graficoVendasLoja').style.minWidth = widthLojas + '%';
 
-    // 5. GRÁFICO PIZZA (TOP MODELOS)
+    const ctxLojas = document.getElementById('graficoVendasLoja').getContext('2d');
+    chartLojas = new Chart(ctxLojas, { type: 'bar', plugins: [pluginDatalabels], data: { labels: lojasSort, datasets: [{ data: lojasSort.map(l => vendasPorLoja[l]), backgroundColor: '#28a745', borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 20 } }, scales: { x: { ticks: { display: false }, grid: { display: false } }, y: { beginAtZero: true } }, plugins: { legend: { display: false }, tooltip: { padding: 12, callbacks: { title: function(context) { return '🏪 ' + context[0].label; }, afterTitle: function(context) { return '👤 Promotor: ' + getPromotorDaLoja(context[0].label); }, label: function(context) { return 'Total Vendido: ' + context.raw + ' un'; } } }, datalabels: { anchor: 'end', align: 'top', color: corTextoGrafico, font: { weight: 'bold' }, formatter: (val) => val + ' un' } } } });
+
     let topModelos = Object.entries(vendasPorModelo).sort((a, b) => b[1] - a[1]).slice(0, 5);
-    if (topModelos.length === 0) topModelos = [["Nenhum", 1]];
-    
-    let elModelosCanvas = document.getElementById('graficoTopModelos');
-    if (elModelosCanvas && elModelosCanvas.parentElement) {
-        elModelosCanvas.parentElement.innerHTML = '<canvas id="graficoTopModelos"></canvas>';
-        const ctxMod = document.getElementById('graficoTopModelos').getContext('2d');
-        chartModelos = new Chart(ctxMod, { type: 'doughnut', plugins: [pluginDatalabels], data: { labels: topModelos.map(m => `${m[0]}`), datasets: [{ data: topModelos.map(m => m[1]), backgroundColor: ['#0086ff', '#28a745', '#ffc107', '#dc3545', '#6f42c1'] }] }, options: { maintainAspectRatio: false, responsive: true, plugins: { legend: { position: 'bottom', labels: { color: corTextoGrafico } }, datalabels: { color: '#fff', font: { weight: 'bold', size: 12 }, formatter: (value) => value > 0 && topModelos[0][0] !== "Nenhum" ? value + ' un' : '' } } } });
-    }
+    const ctxModelos = document.getElementById('graficoTopModelos').getContext('2d');
+    chartModelos = new Chart(ctxModelos, { type: 'doughnut', plugins: [pluginDatalabels], data: { labels: topModelos.map(m => `${m[0]}`), datasets: [{ data: topModelos.map(m => m[1]), backgroundColor: ['#0086ff', '#28a745', '#ffc107', '#dc3545', '#6f42c1'] }] }, options: { maintainAspectRatio: false, responsive: true, plugins: { legend: { position: 'bottom', labels: { color: corTextoGrafico } }, datalabels: { color: '#fff', font: { weight: 'bold', size: 12 }, formatter: (value) => value > 0 ? value + ' un' : '' } } } });
 }
 
 function abrirAdmin() { 
@@ -1313,6 +1833,11 @@ function abrirAdmin() {
     if (usuarioLogado.cargo === "regional") { document.getElementById('container-admin-regiao').style.display = 'none'; }
     
     renderizarAdminUsuarios(); renderizarInputsFoco(); renderizarAdminAparelhos(); 
+}
+
+function obterRegioesUnicas() {
+    let regioes = Object.values(bancoUsuarios).map(u => u.regiao).filter(r => r && r.trim() !== "");
+    return [...new Set(regioes)].sort();
 }
 
 function renderizarAdminUsuarios() {
