@@ -24,7 +24,7 @@ let vendedoresSelecionados = [];
 
 window.addEventListener('online', sincronizarFilaOffline);
 
-// ================= MELHORIAS DE UX (FECHAR MODAL) =================
+// ================= MELHORIAS DE UX (FECHAR MODAL E CACHE) =================
 window.addEventListener('click', function(e) {
     if (e.target.classList.contains('modal-overlay')) {
         e.target.classList.remove('ativo');
@@ -45,23 +45,34 @@ window.addEventListener('keydown', function(e) {
     }
 });
 
+// NOVA FUNÇÃO: Limpa o Cache e força a atualização do sistema
+function limparCacheERecarregar() {
+    let btn = document.getElementById('btn-limpar-cache');
+    if(btn) btn.innerHTML = '<i data-lucide="loader-2" class="lucide-sm" style="animation: spin 2s linear infinite;"></i> Atualizando...';
+    loadIcons();
+    
+    // Varre e destroi todos os caches salvos no celular/navegador
+    localStorage.clear();
+    sessionStorage.clear();
+    mostrarToast("Memória limpa! Reiniciando sistema...", "info");
+    
+    setTimeout(() => {
+        // Redireciona pulando o cache
+        window.location.href = window.location.pathname + "?v=" + new Date().getTime();
+    }, 1200);
+}
+
 function loadIcons() { if(typeof lucide !== 'undefined') { lucide.createIcons(); } }
 
 function toggleTema() {
     document.body.classList.toggle('dark-mode');
     let isDark = document.body.classList.contains('dark-mode');
     localStorage.setItem('temaEscuro', isDark ? 'sim' : 'nao');
+    document.getElementById('btn-tema').innerHTML = isDark ? '<i data-lucide="sun"></i>' : '<i data-lucide="moon"></i>';
     
-    // Atualiza o botão global (escondido no menu)
-    let btnGlobal = document.getElementById('btn-tema');
-    if (btnGlobal) btnGlobal.innerHTML = isDark ? '<i data-lucide="sun"></i>' : '<i data-lucide="moon"></i>';
-    
-    // Atualiza o botão local do Menu Premium
     let iconTemaMenu = document.getElementById('icone-tema-menu');
-    if(iconTemaMenu) {
-        iconTemaMenu.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
-    }
-
+    if(iconTemaMenu) { iconTemaMenu.setAttribute('data-lucide', isDark ? 'sun' : 'moon'); }
+    
     loadIcons();
     if (document.getElementById('tela-dashboard').classList.contains('ativa')) abrirDashboard();
 }
@@ -70,11 +81,8 @@ function mudarTela(idTela) {
     document.querySelectorAll('.tela').forEach(t => t.classList.remove('ativa')); 
     document.getElementById(idTela).classList.add('ativa'); 
     
-    // Esconde o botão de tema solto se estivermos no Menu Principal (porque agora ele tem um próprio)
     let btnTemaGlobal = document.getElementById('btn-tema');
-    if (btnTemaGlobal) {
-        btnTemaGlobal.style.display = (idTela === 'tela-menu') ? 'none' : 'block';
-    }
+    if (btnTemaGlobal) btnTemaGlobal.style.display = (idTela === 'tela-menu') ? 'none' : 'block';
 
     const container = document.querySelector('.container');
     if(idTela === 'tela-dashboard' || idTela === 'tela-admin' || idTela === 'tela-historico') {
@@ -97,6 +105,18 @@ if(localStorage.getItem('temaEscuro') === 'sim') { document.body.classList.add('
 
 window.onload = function() {
     loadIcons();
+    
+    // INJETA O BOTÃO DE LIMPAR CACHE NA TELA DE LOGIN AUTOMATICAMENTE
+    let btnLogin = document.getElementById('btn-login');
+    if (btnLogin && !document.getElementById('btn-limpar-cache')) {
+        btnLogin.insertAdjacentHTML('afterend', `
+            <button id="btn-limpar-cache" type="button" onclick="limparCacheERecarregar()" style="background: transparent; border: 1px solid var(--border-color); color: var(--cor-secundaria); padding: 12px; border-radius: 12px; width: 100%; margin-top: 15px; cursor: pointer; display: flex; justify-content: center; align-items: center; gap: 8px; font-weight: bold; font-size: 14px; transition: all 0.2s;">
+                <i data-lucide="refresh-cw" class="lucide-sm"></i> Forçar Atualização do App
+            </button>
+        `);
+        loadIcons();
+    }
+
     let tempoEsgotado = setTimeout(() => {
         if (document.getElementById('tela-loading').style.display !== 'none') {
             bancoUsuarios["master"] = { nome: "Diretor Master", senha: "Silva_9061", cargo: "master", meta: 0, lojasPermitidas: [] };
@@ -137,18 +157,22 @@ window.onload = function() {
 
 function podeGerenciar(logado, alvoId) {
     if (!logado || !alvoId) return false;
-    // DEUS: Master e Gestor tem acesso livre a tudo
     if (logado.id === "master" || logado.cargo === "master" || logado.cargo === "gestor") return true;
     
     let alvo = bancoUsuarios[alvoId]; 
     if (!alvo) return false;
 
     if (logado.cargo === "regional") {
-        if (alvo.cargo === "supervisor") return (alvo.regiao === logado.regiao) || (alvo.criadoPor === logado.id);
-        if (alvo.cargo === "promotor") { 
-            let supDoPromotor = bancoUsuarios[alvo.criadoPor]; 
-            if (supDoPromotor && supDoPromotor.regiao === logado.regiao) return true; 
-            return alvo.regiao === logado.regiao; 
+        let regLogado = (logado.regiao || "").toUpperCase().trim();
+        let regAlvo = (alvo.regiao || "").toUpperCase().trim();
+        if (regLogado && regAlvo && regLogado === regAlvo) return true;
+        if (alvo.criadoPor === logado.id) return true;
+        if (alvo.cargo === "promotor" && alvo.criadoPor) {
+            let supDoPromotor = bancoUsuarios[alvo.criadoPor];
+            if (supDoPromotor && supDoPromotor.regiao) {
+                let regSup = supDoPromotor.regiao.toUpperCase().trim();
+                if (regSup === regLogado) return true;
+            }
         }
         return false;
     }
@@ -327,12 +351,11 @@ function adminAbrirModalPermissoes(login) {
 
 function getPromotorDaLoja(nomeLoja) { let promotores = []; for (let key in bancoUsuarios) { let u = bancoUsuarios[key]; if (u.cargo === "promotor" && u.lojasPermitidas.includes(nomeLoja)) { promotores.push(u.nome || (key.charAt(0).toUpperCase() + key.slice(1))); } } return promotores.length > 0 ? promotores.join(", ") : "Não Atribuído"; }
 
-// ================= NOVO MENU PREMIUM E NOTIFICAÇÕES =================
+// ================= MENU NOVO E NOTIFICAÇÕES (SINO) =================
 
 function renderizarMenuPrincipal() {
     let menuDiv = document.getElementById('tela-menu');
     
-    // Oculta o botão de tema global para não duplicar, pois teremos um no header do menu
     let btnTemaGlobal = document.getElementById('btn-tema');
     if (btnTemaGlobal) btnTemaGlobal.style.display = 'none';
 
@@ -342,7 +365,6 @@ function renderizarMenuPrincipal() {
     let nomeUser = (usuarioLogado.nome || "").split(" ")[0];
     let cargoTexto = usuarioLogado.id === "master" ? "👑 Diretor Master" : (usuarioLogado.cargo === "gestor" ? "👔 Gestor Geral" : (usuarioLogado.cargo === "regional" ? "🌎 Gestor Regional" : (usuarioLogado.cargo === "supervisor" ? "📍 Supervisor" : "📱 Promotor")));
 
-    // Template HTML com o Grid Moderno
     let html = `
     <style>
         .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 25px; margin-bottom: 30px; }
@@ -557,6 +579,7 @@ function fecharModalNotificacoes() { document.getElementById('modal-notificacoes
 
 function irParaNotificacao(tipo, promotorLogin) {
     fecharModalNotificacoes();
+    
     document.getElementById('filtro-sup-historico').value = "todos"; 
     mudouSupHistorico(); 
 
@@ -572,7 +595,7 @@ function irParaNotificacao(tipo, promotorLogin) {
     }, 150);
 }
 
-// ================= LOGIN E ACESSO =================
+// ================= LOGIN E ACESSO BLINDADO =================
 function realizarLogin() {
     const btn = document.getElementById("btn-login"); 
     btn.disabled = true; 
@@ -580,30 +603,46 @@ function realizarLogin() {
     loadIcons();
     
     setTimeout(() => {
-        const usuarioDigitado = document.getElementById('nome-usuario').value.trim().toLowerCase(); 
-        const senhaDigitada = document.getElementById('senha-usuario').value.trim();
-        
-        const usuarioEncontrado = bancoUsuarios[usuarioDigitado];
-        let senhaReal = (usuarioDigitado === "master") ? "Silva_9061" : (usuarioEncontrado ? usuarioEncontrado.senha : null);
-        
-        if (usuarioEncontrado && senhaReal === senhaDigitada) {
-            usuarioLogado = usuarioEncontrado; 
-            usuarioLogado.id = usuarioDigitado; 
-            usuarioLogado.nome = usuarioEncontrado.nome || (usuarioDigitado.charAt(0).toUpperCase() + usuarioDigitado.slice(1));
+        try {
+            const usuarioDigitado = document.getElementById('nome-usuario').value.trim().toLowerCase(); 
+            const senhaDigitada = document.getElementById('senha-usuario').value.trim();
             
-            if (senhaDigitada === "1234" && !localStorage.getItem('ignorar_troca_' + usuarioDigitado) && usuarioDigitado !== "master") { 
-                usuarioEditandoSenha = usuarioDigitado; 
-                abrirModalSenha(); 
-            } else { 
-                entrarNoSistema(); 
+            // Força a criação do Master na memória caso a rede tenha falhado
+            if (usuarioDigitado === "master") {
+                bancoUsuarios["master"] = { nome: "Diretor Master", senha: "Silva_9061", cargo: "master", meta: 0, lojasPermitidas: [] };
             }
-        } else { 
-            mostrarToast("Usuário ou senha incorretos!", "erro"); 
+
+            const usuarioEncontrado = bancoUsuarios[usuarioDigitado];
+            let senhaReal = (usuarioDigitado === "master") ? "Silva_9061" : (usuarioEncontrado ? usuarioEncontrado.senha : null);
+            
+            if (usuarioEncontrado && senhaReal === senhaDigitada) {
+                usuarioLogado = usuarioEncontrado; 
+                usuarioLogado.id = usuarioDigitado; 
+                usuarioLogado.nome = usuarioEncontrado.nome || (usuarioDigitado === "master" ? "Diretor Master" : (usuarioDigitado.charAt(0).toUpperCase() + usuarioDigitado.slice(1)));
+                
+                if (senhaDigitada === "1234" && !localStorage.getItem('ignorar_troca_' + usuarioDigitado) && usuarioDigitado !== "master") { 
+                    usuarioEditandoSenha = usuarioDigitado; 
+                    abrirModalSenha(); 
+                    btn.disabled = false; 
+                    btn.innerHTML = '<i data-lucide="log-in" style="margin-right: 8px;"></i> Acessar Sistema'; 
+                    loadIcons();
+                } else { 
+                    entrarNoSistema(); 
+                }
+            } else { 
+                mostrarToast("Usuário ou senha incorretos!", "erro"); 
+                btn.disabled = false; 
+                btn.innerHTML = '<i data-lucide="log-in" style="margin-right: 8px;"></i> Acessar Sistema'; 
+                loadIcons();
+            }
+        } catch (e) {
+            console.error("Erro no login:", e);
+            mostrarToast("Erro de sistema. Clique em Forçar Atualização.", "erro");
+            btn.disabled = false; 
+            btn.innerHTML = '<i data-lucide="log-in" style="margin-right: 8px;"></i> Acessar Sistema'; 
+            loadIcons();
         }
-        btn.disabled = false; 
-        btn.innerHTML = '<i data-lucide="log-in" style="margin-right: 8px;"></i> Acessar Sistema'; 
-        loadIcons();
-    }, 400);
+    }, 500);
 }
 
 function abrirModalSenha() { document.getElementById('etapa-pergunta-senha').style.display = 'block'; document.getElementById('etapa-formulario-senha').style.display = 'none'; document.getElementById('modal-senha').classList.add('ativo'); }
@@ -613,9 +652,9 @@ function salvarNovaSenha() { let s1 = document.getElementById('nova-senha-1').va
 function fecharModalSenha() { document.getElementById('modal-senha').classList.remove('ativo'); }
 
 function entrarNoSistema() {
-    document.getElementById('saudacao-usuario').innerText = ""; 
     document.getElementById('nome-usuario').value = ""; 
     document.getElementById('senha-usuario').value = "";
+    
     renderizarMenuPrincipal();
     mudarTela('tela-menu');
 }
@@ -720,16 +759,33 @@ function renderizarFiltroPromotores() {
     let html = `<div class="card-promotor-filtro ${promotorFiltroAtual === 'todos' ? 'ativo' : ''}" onclick="setFiltroPromotor('todos')"><i data-lucide="layout-dashboard" class="lucide-sm"></i> Visão Geral (Todas)</div>`;
     
     if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") {
-        for (let key in bancoUsuarios) { 
-            if (bancoUsuarios[key].cargo === "supervisor") {
-                if(podeGerenciar(usuarioLogado, key)) {
-                    html += `<div class="card-promotor-filtro ${promotorFiltroAtual === key ? 'ativo' : ''}" onclick="setFiltroPromotor('${key}')"><i data-lucide="users" class="lucide-sm"></i> Equipe ${bancoUsuarios[key].nome || key}</div>`; 
+        for (let key in bancoUsuarios) {
+            let u = bancoUsuarios[key];
+            let isSupervisor = (u.cargo === "supervisor" || u.cargo === "gestor" || u.cargo === "regional" || key === "master");
+            if (isSupervisor) {
+                let temEquipe = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === key);
+                if (temEquipe && podeGerenciar(usuarioLogado, key)) {
+                    html += `<div class="card-promotor-filtro ${promotorFiltroAtual === key ? 'ativo' : ''}" onclick="setFiltroPromotor('${key}')"><i data-lucide="users" class="lucide-sm"></i> Equipe ${u.nome || key}</div>`;
                 }
-            } 
+            }
         }
-        if (promotorFiltroAtual !== 'todos' && bancoUsuarios[promotorFiltroAtual]) {
+        let temOrfaos = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && (!bancoUsuarios[k].criadoPor || !bancoUsuarios[bancoUsuarios[k].criadoPor]));
+        if (temOrfaos && (usuarioLogado.id === "master" || usuarioLogado.cargo === "gestor")) {
+            html += `<div class="card-promotor-filtro ${promotorFiltroAtual === 'orfaos' ? 'ativo' : ''}" onclick="setFiltroPromotor('orfaos')" style="border-color:#ffc107; color:#856404;"><i data-lucide="alert-triangle" class="lucide-sm"></i> Órfãos</div>`;
+        }
+
+        if (promotorFiltroAtual !== 'todos') {
             let htmlSub = `<div class="card-promotor-filtro ${subPromotorFiltroAtual === 'todos' ? 'ativo' : ''}" style="${subPromotorFiltroAtual === 'todos' ? 'background-color: #17a2b8; border-color: #17a2b8; color: white;' : 'background-color: var(--bg-item); color: var(--cor-secundaria); border-color: var(--border-color);'}" onclick="setSubFiltroPromotor('todos')"><i data-lucide="users" class="lucide-sm"></i> Todas (Equipe)</div>`;
-            for (let key in bancoUsuarios) { if (bancoUsuarios[key].cargo === "promotor" && bancoUsuarios[key].criadoPor === promotorFiltroAtual) { let isAt = subPromotorFiltroAtual === key; htmlSub += `<div class="card-promotor-filtro ${isAt ? 'ativo' : ''}" style="${isAt ? 'background-color: #17a2b8; border-color: #17a2b8; color: white;' : 'background-color: var(--bg-item); color: var(--cor-secundaria); border-color: var(--border-color);'}" onclick="setSubFiltroPromotor('${key}')"><i data-lucide="user" class="lucide-sm"></i> ${bancoUsuarios[key].nome || key}</div>`; } }
+            for (let key in bancoUsuarios) { 
+                let u = bancoUsuarios[key];
+                if (u.cargo === "promotor") {
+                    let pertence = (promotorFiltroAtual === 'orfaos') ? (!u.criadoPor || !bancoUsuarios[u.criadoPor]) : (u.criadoPor === promotorFiltroAtual);
+                    if (pertence) {
+                        let isAt = subPromotorFiltroAtual === key; 
+                        htmlSub += `<div class="card-promotor-filtro ${isAt ? 'ativo' : ''}" style="${isAt ? 'background-color: #17a2b8; border-color: #17a2b8; color: white;' : 'background-color: var(--bg-item); color: var(--cor-secundaria); border-color: var(--border-color);'}" onclick="setSubFiltroPromotor('${key}')"><i data-lucide="user" class="lucide-sm"></i> ${u.nome || key}</div>`;
+                    }
+                }
+            }
             if(divSub) { divSub.innerHTML = htmlSub; divSub.style.display = "flex"; }
         } else { if(divSub) divSub.style.display = "none"; }
     } else if (usuarioLogado.cargo === "supervisor") {
