@@ -121,8 +121,12 @@ window.onload = function() {
 
 function podeGerenciar(logado, alvoId) {
     if (!logado || !alvoId) return false;
+    // DEUS: Master e Gestor tem acesso livre a tudo
     if (logado.id === "master" || logado.cargo === "master" || logado.cargo === "gestor") return true;
-    let alvo = bancoUsuarios[alvoId]; if (!alvo) return false;
+    
+    let alvo = bancoUsuarios[alvoId]; 
+    if (!alvo) return false;
+
     if (logado.cargo === "regional") {
         if (alvo.cargo === "supervisor") return (alvo.regiao === logado.regiao) || (alvo.criadoPor === logado.id);
         if (alvo.cargo === "promotor") { let supDoPromotor = bancoUsuarios[alvo.criadoPor]; if (supDoPromotor && supDoPromotor.regiao === logado.regiao) return true; return alvo.regiao === logado.regiao; }
@@ -166,20 +170,76 @@ function verificarConferenciaEstoque() {
 function filtrarListaLojas(texto, containerId) { texto = texto.toLowerCase(); const labels = document.getElementById(containerId).querySelectorAll('label'); labels.forEach(lbl => { if (lbl.innerText.toLowerCase().includes(texto)) lbl.style.display = 'flex'; else lbl.style.display = 'none'; }); }
 function fecharModalEdicao() { document.getElementById('modal-edicao').classList.remove('ativo'); }
 
-// --- MODAIS COM AUTO-SAVE NA NUVEM ---
+// --- MODAIS DE DEUS: AUTO-SAVE NA NUVEM, PROMOÇÃO DE CARGO E TRANSFERÊNCIA DE EQUIPES ---
+
+function adminAbrirModalCargo(login) {
+    let u = bancoUsuarios[login];
+    document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="briefcase"></i> Alterar Cargo`;
+    let html = `<label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Novo cargo para <b>@${login}</b>:</label>
+                <select id="input-edicao-cargo" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--cor-texto);">
+                    <option value="promotor" ${u.cargo==='promotor'?'selected':''}>Promotor de Vendas</option>
+                    <option value="supervisor" ${u.cargo==='supervisor'?'selected':''}>Supervisor de Equipe</option>
+                    <option value="regional" ${u.cargo==='regional'?'selected':''}>Gestor Regional</option>
+                    <option value="gestor" ${u.cargo==='gestor'?'selected':''}>Diretor / Master</option>
+                </select>`;
+    document.getElementById('modal-edicao-corpo').innerHTML = html;
+    document.getElementById('btn-salvar-edicao').onclick = function() {
+        let novoCargo = document.getElementById('input-edicao-cargo').value;
+        bancoUsuarios[login].cargo = novoCargo;
+        if(novoCargo === 'supervisor' && !u.criadoPor) u.criadoPor = usuarioLogado.id;
+        renderizarAdminUsuarios(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Cargo alterado e salvo na nuvem!", "sucesso");
+    };
+    document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
+}
+
+function adminAbrirModalTransferir(login) {
+    let u = bancoUsuarios[login];
+    document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="arrow-right-left"></i> Transferir Equipe`;
+    let options = "";
+    for(let k in bancoUsuarios) {
+        if(bancoUsuarios[k].cargo === "supervisor" || bancoUsuarios[k].cargo === "master" || bancoUsuarios[k].cargo === "gestor") {
+            let selected = (u.criadoPor === k) ? "selected" : "";
+            options += `<option value="${k}" ${selected}>Equipe: ${bancoUsuarios[k].nome || k}</option>`;
+        }
+    }
+    let html = `<label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Mover o promotor <b>${u.nome || login}</b> para:</label>
+                <select id="input-edicao-transferir" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--cor-texto);">${options}</select>`;
+    document.getElementById('modal-edicao-corpo').innerHTML = html;
+    document.getElementById('btn-salvar-edicao').onclick = function() {
+        let novoSup = document.getElementById('input-edicao-transferir').value;
+        if(novoSup) {
+            bancoUsuarios[login].criadoPor = novoSup;
+            if(bancoUsuarios[novoSup].regiao) bancoUsuarios[login].regiao = bancoUsuarios[novoSup].regiao;
+            renderizarModalEquipe(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Promotor transferido de equipe!", "sucesso");
+        }
+    };
+    document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
+}
 
 function adminAbrirModalRegiao(login) {
     let u = bancoUsuarios[login]; document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="globe"></i> Região - @${login}`;
-    let html = `<label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Nova Região/Estado (Ex: MG, SP):</label><input type="text" id="input-edicao-regiao" value="${u.regiao || ''}" style="width: 100%; padding: 10px; text-transform: uppercase;">`;
+    let html = `<label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Nova Região/Estado (Ex: MG, SP):</label>
+                <input type="text" id="input-edicao-regiao" value="${u.regiao || ''}" style="width: 100%; padding: 10px; text-transform: uppercase;">`;
     document.getElementById('modal-edicao-corpo').innerHTML = html;
-    document.getElementById('btn-salvar-edicao').onclick = function() { let nova = document.getElementById('input-edicao-regiao').value.trim().toUpperCase(); bancoUsuarios[login].regiao = nova; renderizarAdminUsuarios(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Região alterada com sucesso!", "sucesso"); }; document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
+    document.getElementById('btn-salvar-edicao').onclick = function() {
+        let nova = document.getElementById('input-edicao-regiao').value.trim().toUpperCase(); bancoUsuarios[login].regiao = nova; renderizarAdminUsuarios(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Região alterada com sucesso!", "sucesso");
+    };
+    document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
 }
 
 function adminAbrirModalLojas(login) {
     let u = bancoUsuarios[login]; document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="store"></i> Lojas - ${u.nome || login}`;
-    let html = `<input type="text" class="input-busca-loja" placeholder="Pesquisar loja..." onkeyup="filtrarListaLojas(this.value, 'edicao-lojas-container')" style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--cor-texto);"><div id="edicao-lojas-container" style="max-height: 180px; overflow-y: auto;">`;
-    let lojasOrdenadas = getLojasDaRegiao(u.criadoPor);
-    if(lojasOrdenadas.length === 0) { html += "<p style='color:var(--cor-secundaria); font-size:13px;'>Sua região não tem lojas cadastradas.</p>"; } 
+    let html = `<input type="text" class="input-busca-loja" placeholder="Pesquisar loja..." onkeyup="filtrarListaLojas(this.value, 'edicao-lojas-container')" style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--cor-texto);"><div id="edicao-lojas-container" style="max-height: 180px; overflow-y: auto; text-align: left;">`;
+    
+    // MODO DEUS: O Master/Gestor vê todas as lojas da empresa para consertar lojas sem promotor
+    let lojasOrdenadas = [];
+    if (usuarioLogado.id === "master" || usuarioLogado.cargo === "gestor") {
+        lojasOrdenadas = Object.keys(lojasConfig).sort((a,b) => a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'}));
+    } else {
+        lojasOrdenadas = getLojasDaRegiao(u.criadoPor);
+    }
+
+    if(lojasOrdenadas.length === 0) { html += "<p style='color:var(--cor-secundaria); font-size:13px;'>Nenhuma loja encontrada.</p>"; } 
     else { lojasOrdenadas.forEach(loja => { let isChecked = u.lojasPermitidas.includes(loja) ? "checked" : ""; html += `<label style="display: flex; align-items: center; gap: 8px; cursor: pointer; border-bottom: 1px solid var(--border-color); padding-bottom: 6px; margin-bottom: 6px; font-size: 14px;"><input type="checkbox" class="check-edicao-loja" value="${loja}" ${isChecked}> ${loja}</label>`; }); }
     html += `</div>`; document.getElementById('modal-edicao-corpo').innerHTML = html;
     document.getElementById('btn-salvar-edicao').onclick = function() { let selecionadas = Array.from(document.querySelectorAll('.check-edicao-loja:checked')).map(cb => cb.value); bancoUsuarios[login].lojasPermitidas = selecionadas; renderizarModalEquipe(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Lojas alteradas com sucesso!", "sucesso"); }; document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
@@ -644,6 +704,8 @@ function renderizarListaAcompanhamento() {
         html += `<div style="margin-bottom: 25px; border-radius: 8px; box-shadow: 0 4px 8px var(--shadow-color); overflow: hidden; text-align: left;"><div style="background: ${pKey === 'sem_promotor' ? '#6c757d' : '#0086ff'}; color: white; padding: 12px 15px; font-weight: bold; display: flex; justify-content: space-between; align-items: center;"><span style="font-size: 15px; display:flex; align-items:center;"><i data-lucide="user"></i> Promotor: ${nomePromotor}</span><span style="background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 20px; font-size: 13px;">Total: ${totalPromotor} un</span></div><div style="background: var(--bg-container); padding: 15px 10px 5px 10px; border: 1px solid var(--border-color); border-top: none; border-radius: 0 0 8px 8px;">${htmlLojas}</div></div>`;
     } div.innerHTML = html; loadIcons();
 }
+
+// ================= FUNÇÕES DO ESTOQUE E MOSTRUÁRIO ================= //
 
 function fecharModalConfirmMostruario() { document.getElementById('modal-confirm-mostruario').classList.remove('ativo'); mostruarioEmEdicao = null; }
 function fecharModalPromptMostruario() { document.getElementById('modal-prompt-mostruario').classList.remove('ativo'); mostruarioEmEdicao = null; }
@@ -1489,15 +1551,31 @@ function abrirAdmin() {
 
 function renderizarAdminUsuarios() {
     const div = document.getElementById('lista-admin-supervisores'); let htmlContent = "";
+    
+    // Adicionar o Master na lista se quem estiver logado for o Master (para ele poder ver os promotores "órfãos" criados por ele)
+    if (usuarioLogado.id === "master") {
+        htmlContent += `
+        <div class="linha-admin" style="flex-direction: column; align-items: stretch; padding: 12px; background: var(--bg-container); margin-bottom: 12px; box-shadow: 0 1px 3px var(--shadow-color); border: 2px solid var(--border-color);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed var(--border-color); padding-bottom: 8px; margin-bottom: 8px;">
+                <div style="text-align: left;">
+                    <strong style="font-size: 15px; color: var(--cor-texto); display: block;">Diretor Master <span style="font-size: 10px; color: var(--cor-secundaria); font-weight: normal;">(@master)</span></strong>
+                    <span style="font-size: 12px; font-weight: bold; color: #6c757d;">👑 Master</span>
+                </div>
+            </div>
+            <button class="btn-editar" style="background-color: #17a2b8; padding: 6px 12px; border-radius: 6px; width: 100%; margin-top: 8px;" onclick="abrirPainelEquipe('master')"><i data-lucide="settings" class="lucide-sm"></i> Gerenciar Lojas e Equipe Direta</button>
+        </div>`;
+    }
+
     for(let l in bancoUsuarios) { 
-        let u = bancoUsuarios[l]; if (u.cargo === "promotor") continue; 
+        let u = bancoUsuarios[l]; if (u.cargo === "promotor" || l === "master") continue; 
         if (!podeGerenciar(usuarioLogado, l) && l !== usuarioLogado.id) continue;
         
         let labelCargo = l === "master" ? "👑 Master" : (u.cargo === "gestor" ? "👔 Gestor" : (u.cargo === "regional" ? "🌎 Gestor Regional" : "📍 Supervisor"));
         let subLabel = u.regiao ? ` - Região: ${u.regiao}` : "";
-        let btnGerenciar = (u.cargo === "supervisor") ? `<button class="btn-editar" style="background-color: #17a2b8; padding: 6px 12px; border-radius: 6px; width: 100%; margin-top: 8px;" onclick="abrirPainelEquipe('${l}')"><i data-lucide="settings" class="lucide-sm"></i> Gerenciar Equipe e Lojas</button>` : ''; 
+        let btnGerenciar = (u.cargo === "supervisor" || u.cargo === "gestor" || u.cargo === "regional") ? `<button class="btn-editar" style="background-color: #17a2b8; padding: 6px 12px; border-radius: 6px; width: 100%; margin-top: 8px;" onclick="abrirPainelEquipe('${l}')"><i data-lucide="settings" class="lucide-sm"></i> Gerenciar Equipe e Lojas</button>` : ''; 
         
         let btnNome = `<button class="btn-editar" style="background-color: #28a745;" onclick="adminAbrirModalNome('${l}')"><i data-lucide="edit-3"></i> Nome</button>`;
+        let btnCargo = (usuarioLogado.id === "master" || usuarioLogado.cargo === "gestor") ? `<button class="btn-editar" style="background-color: #0086ff;" onclick="adminAbrirModalCargo('${l}')"><i data-lucide="briefcase"></i> Cargo</button>` : "";
         let btnRegiao = (u.cargo === "supervisor" || u.cargo === "regional") ? `<button class="btn-editar" style="background-color: #6f42c1;" onclick="adminAbrirModalRegiao('${l}')"><i data-lucide="globe"></i> Região</button>` : "";
         let btnSenha = `<button class="btn-editar" style="background-color: #ffc107; color: #856404;" onclick="adminAbrirModalSenha('${l}')"><i data-lucide="key"></i> Senha</button>`; 
         let btnExcluir = (usuarioLogado.id === "master" && l !== "master") ? `<button class="btn-excluir" onclick="adminRemoverUsuario('${l}')"><i data-lucide="x"></i></button>` : ""; 
@@ -1509,7 +1587,7 @@ function renderizarAdminUsuarios() {
                     <strong style="font-size: 15px; color: var(--cor-texto); display: block;">${u.nome || l} <span style="font-size: 10px; color: var(--cor-secundaria); font-weight: normal;">(@${l})</span></strong>
                     <span style="font-size: 12px; font-weight: bold; color: ${u.cargo === 'supervisor' ? '#0086ff' : '#6c757d'};">${labelCargo}${subLabel}</span>
                 </div>
-                <div style="display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end;">${btnNome} ${btnRegiao} ${btnSenha} ${btnExcluir}</div>
+                <div style="display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end;">${btnNome} ${btnCargo} ${btnRegiao} ${btnSenha} ${btnExcluir}</div>
             </div>
             ${btnGerenciar}
         </div>`; 
@@ -1538,12 +1616,12 @@ function adminAddGestorSup() {
     
     bancoUsuarios[l] = { nome: n, senha: s, cargo: c, regiao: r, meta: 0, lojasPermitidas: [], criadoPor: usuarioLogado.id };
     document.getElementById('admin-gs-login').value = ""; document.getElementById('admin-gs-nome').value = ""; document.getElementById('admin-gs-senha').value = ""; document.getElementById('admin-gs-regiao').value = "";
-    renderizarAdminUsuarios(); mostrarToast(`Usuário ${l} criado! Salve na nuvem.`, "sucesso");
+    renderizarAdminUsuarios(); salvarConfiguracoesGlobais(false); mostrarToast(`Usuário ${l} criado! Salvo na nuvem.`, "sucesso");
 }
 
 function abrirPainelEquipe(login) {
     supervisorGerenciadoAtual = login;
-    let nome = bancoUsuarios[login].nome || login;
+    let nome = (login === "master") ? "Diretor Master" : (bancoUsuarios[login].nome || login);
     document.getElementById('titulo-modal-equipe').innerHTML = `<i data-lucide="users"></i> Equipe de ${nome}`;
     renderizarModalEquipe();
     document.getElementById('modal-gerenciar-equipe').classList.add('ativo'); loadIcons();
@@ -1568,10 +1646,11 @@ function renderizarModalEquipe() {
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
                     <strong style="font-size:14px; color:var(--cor-texto);"><i data-lucide="user" class="lucide-sm"></i> ${u.nome || k} (@${k})</strong>
                     <div style="display:flex; gap:5px;">
-                        <button class="btn-editar" style="background:#ffc107; color:#856404;" onclick="adminAbrirModalSenha('${k}')"><i data-lucide="key" class="lucide-sm"></i></button>
-                        <button class="btn-editar" onclick="adminAbrirModalNome('${k}')"><i data-lucide="edit-3" class="lucide-sm"></i></button>
-                        <button class="btn-editar" style="background:#6f42c1;" onclick="adminAbrirModalPermissoes('${k}')"><i data-lucide="shield" class="lucide-sm"></i></button>
-                        <button class="btn-excluir" onclick="adminRemoverUsuarioModalEquipe('${k}')"><i data-lucide="trash-2" class="lucide-sm"></i></button>
+                        ${(usuarioLogado.id === "master" || usuarioLogado.cargo === "gestor") ? `<button class="btn-editar" style="background:#0086ff;" title="Transferir Equipe" onclick="adminAbrirModalTransferir('${k}')"><i data-lucide="arrow-right-left" class="lucide-sm"></i></button>` : ''}
+                        <button class="btn-editar" style="background:#ffc107; color:#856404;" title="Alterar Senha" onclick="adminAbrirModalSenha('${k}')"><i data-lucide="key" class="lucide-sm"></i></button>
+                        <button class="btn-editar" title="Editar Nome" onclick="adminAbrirModalNome('${k}')"><i data-lucide="edit-3" class="lucide-sm"></i></button>
+                        <button class="btn-editar" style="background:#6f42c1;" title="Permissões" onclick="adminAbrirModalPermissoes('${k}')"><i data-lucide="shield" class="lucide-sm"></i></button>
+                        <button class="btn-excluir" title="Excluir" onclick="adminRemoverUsuarioModalEquipe('${k}')"><i data-lucide="trash-2" class="lucide-sm"></i></button>
                     </div>
                 </div>
                 <div style="font-size:12px; color:var(--cor-secundaria); display:flex; justify-content:space-between; align-items:center;">
@@ -1633,7 +1712,9 @@ function adminAddPromotorEquipe() {
         estoque_editar: document.getElementById('perm-est-edit').checked
     };
 
-    bancoUsuarios[l] = { nome: n, senha: s, cargo: "promotor", regiao: bancoUsuarios[supervisorGerenciadoAtual].regiao, meta: m, lojasPermitidas: lojasSelecionadas, criadoPor: supervisorGerenciadoAtual, permissoes: perm };
+    let regiaoMae = (supervisorGerenciadoAtual === "master") ? "MATRIZ" : bancoUsuarios[supervisorGerenciadoAtual].regiao;
+    
+    bancoUsuarios[l] = { nome: n, senha: s, cargo: "promotor", regiao: regiaoMae, meta: m, lojasPermitidas: lojasSelecionadas, criadoPor: supervisorGerenciadoAtual, permissoes: perm };
     
     document.getElementById('modal-promotor-login').value = ""; document.getElementById('modal-promotor-nome').value = ""; document.getElementById('modal-promotor-senha').value = ""; document.getElementById('modal-promotor-meta').value = "";
     renderizarModalEquipe(); salvarConfiguracoesGlobais(false); mostrarToast("Promotor criado com sucesso!", "sucesso");
