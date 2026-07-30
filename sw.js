@@ -1,30 +1,50 @@
-const CACHE_NAME = 'oppo-portal-v1';
-const urlsToCache = [
-  './index.html',
-  './style.css',
-  './app.js',
-  './manifest.json'
-];
+// NOME DO CACHE (Mude o número da versão sempre que fizer uma grande atualização no futuro, ex: oppo-v3)
+const CACHE_NAME = 'oppo-v2-premium'; 
 
-// Instala o Service Worker e guarda os arquivos no cache do celular
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        return cache.addAll(urlsToCache);
-      })
-  );
+// INSTALAÇÃO: Força o celular a instalar a nova versão imediatamente
+self.addEventListener('install', (event) => {
+    self.skipWaiting(); 
 });
 
-// Responde com os arquivos do cache se estiver offline, ou busca na internet
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        if (response) {
-          return response;
-        }
-        return fetch(event.request);
-      })
-  );
+// ATIVAÇÃO: Varre o celular do promotor e deleta qualquer lixo de versão antiga
+self.addEventListener('activate', (event) => {
+    event.waitUntil(
+        caches.keys().then((cacheNames) => {
+            return Promise.all(
+                cacheNames.map((cacheName) => {
+                    if (cacheName !== CACHE_NAME) {
+                        console.log('Deletando cache antigo:', cacheName);
+                        return caches.delete(cacheName); 
+                    }
+                })
+            );
+        })
+    );
+    self.clients.claim(); // Assume o controle na mesma hora
+});
+
+// INTERCEPTADOR DE REDE (ESTRATÉGIA: NETWORK FIRST / INTERNET PRIMEIRO)
+self.addEventListener('fetch', (event) => {
+    // Ignora requisições para a API do Google (elas nunca devem ser cacheadas)
+    if (event.request.url.includes('script.google.com')) {
+        return; 
+    }
+
+    event.respondWith(
+        fetch(event.request)
+            .then((response) => {
+                // Se o celular tem internet, ele baixa o arquivo fresco e atualiza o cache silenciosamente
+                if (response && response.status === 200 && response.type === 'basic') {
+                    const responseClone = response.clone();
+                    caches.open(CACHE_NAME).then((cache) => {
+                        cache.put(event.request, responseClone);
+                    });
+                }
+                return response;
+            })
+            .catch(() => {
+                // Se o promotor está offline no meio da rua, carrega o app usando a memória do cache
+                return caches.match(event.request);
+            })
+    );
 });
