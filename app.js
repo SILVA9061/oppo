@@ -222,17 +222,13 @@ function podeGerenciar(logado, alvoId) {
     return false;
 }
 
-// >>> FUNÇÃO NOVA PARA BUSCA HIERÁRQUICA PROFUNDA (DASHBOARD E FILTROS) <<<
 function promotorPertenceAoGestor(idPromotor, idGestorFiltro) {
     if (idGestorFiltro === "todos") return true;
     let u = bancoUsuarios[idPromotor];
     if (!u) return false;
     if (idGestorFiltro === "orfaos") return (!u.criadoPor || !bancoUsuarios[u.criadoPor]);
-    
-    // Se o promotor for diretamente da pessoa
     if (u.criadoPor === idGestorFiltro) return true;
     
-    // Se o Filtro for um Regional ou Master, valida pela hierarquia do supervisor
     let gestorFiltroObj = bancoUsuarios[idGestorFiltro];
     if (gestorFiltroObj) {
         let fakeLogado = Object.assign({id: idGestorFiltro}, gestorFiltroObj);
@@ -833,7 +829,6 @@ function renderizarFiltroPromotores() {
                 }
             }
         }
-        
         let temOrfaos = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && (!bancoUsuarios[k].criadoPor || !bancoUsuarios[bancoUsuarios[k].criadoPor]));
         if (temOrfaos && (usuarioLogado.id === "master" || usuarioLogado.cargo === "gestor")) {
             html += `<div class="card-promotor-filtro ${promotorFiltroAtual === 'orfaos' ? 'ativo' : ''}" onclick="setFiltroPromotor('orfaos')" style="border-color:#ffc107; color:#856404;"><i data-lucide="alert-triangle" class="lucide-sm"></i> Órfãos</div>`;
@@ -1294,15 +1289,15 @@ function renderizarListaHistorico() {
         if(tipoHistoricoAtual === 'geral' && tipoRegistro === 'estoque') return false; 
         
         let pLogin = getVal(row, ['promotor', 'usuario', 'login']);
-        let pObj = bancoUsuarios[pLogin];
         
         if (usuarioLogado.cargo === "promotor") {
             if (pLogin !== usuarioLogado.id) return false;
         } else if (usuarioLogado.cargo === "supervisor") {
-            if (pLogin !== usuarioLogado.id && (!pObj || pObj.criadoPor !== usuarioLogado.id)) return false;
+            if (pLogin !== usuarioLogado.id && !podeGerenciar(usuarioLogado, pLogin)) return false;
             if (promAlvo && promAlvo !== "todos" && pLogin !== promAlvo) return false;
         } else {
             if (supAlvo && supAlvo !== "todos") {
+                let pObj = bancoUsuarios[pLogin];
                 if (pLogin !== supAlvo && (!pObj || pObj.criadoPor !== supAlvo)) return false;
             } else if (supAlvo === "todos") {
                 if (pLogin !== usuarioLogado.id && pLogin !== "Sistema" && !podeGerenciar(usuarioLogado, pLogin)) return false;
@@ -1446,7 +1441,7 @@ function abrirDashboard() {
     if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") {
         document.getElementById('container-filtro-supervisor-dash').style.display = "block"; document.getElementById('container-filtro-promotor-dash').style.display = "block";
         if(selSup.options.length <= 1) { 
-            let htmlOp = usuarioLogado.cargo === "regional" ? '<option value="todos">Sua Região (Geral)</option>' : '<option value="todos">Todas as Regiões (Geral)</option>'; 
+            let htmlOp = '<option value="todos">Todas as Regiões (Geral)</option>'; 
             for(let k in bancoUsuarios) { 
                 let isSupervisor = (bancoUsuarios[k].cargo === "supervisor" || bancoUsuarios[k].cargo === "gestor" || bancoUsuarios[k].cargo === "regional" || k === "master");
                 if (isSupervisor) {
@@ -1478,7 +1473,12 @@ function abrirDashboard() {
             if (res.meses && selDash && selDash.options.length <= 1) {
                 selDash.innerHTML = res.meses.map(m => `<option value="${m}" ${m === res.mesAtual ? "selected" : ""}>Mês: ${m}</option>`).join("");
             }
-            gerarGraficos(res.dados); 
+            try {
+                gerarGraficos(res.dados); 
+            } catch(errG) {
+                console.error("Erro interno nos gráficos:", errG);
+                document.getElementById("total-vendas-geral").innerText = "Erro Gráfico";
+            }
         } else { document.getElementById("total-vendas-geral").innerText = "Erro!"; }
     })
     .catch(e => { console.error("Erro no Dashboard:", e); document.getElementById("total-vendas-geral").innerText = "Erro de Rede"; });
@@ -1653,6 +1653,10 @@ function gerarGraficos(dadosVendas) {
         });
     });
 
+    if (metricas["Órfãos"] && metricas["Órfãos"].realizadoGeral === 0 && metricas["Órfãos"].metaIndividual === 0) {
+        delete metricas["Órfãos"];
+    }
+
     let mesFiltro = document.getElementById("seletor-mes-dash").value;
 
     Object.values(metricas).forEach(m => {
@@ -1718,7 +1722,6 @@ function gerarGraficos(dadosVendas) {
     let listaFocoAtuais = Object.keys(pSup).filter(k => pSup[k]).map(k => `<span style="display:inline-block; background:var(--bg-item); color:var(--cor-texto); padding:4px 8px; border-radius:6px; margin:2px; border: 1px solid var(--border-color); font-weight:bold;">${mapaEmojis[k] || ''} ${k.toUpperCase()}</span>`);
     document.getElementById("lista-foco-ativo-dash").innerHTML = listaFocoAtuais.length > 0 ? listaFocoAtuais.join("") : "<span style='color:var(--cor-secundaria); font-style:italic;'>Nenhum aparelho configurado como Foco.</span>";
 
-    // O total do bloco de detalhe continua sendo um apanhado geral, mas somando as métricas ativas filtradas
     let totalFocoVendidoGeral = Object.values(metricas).reduce((acc, m) => acc + m.realizadoPremium, 0); 
     let metaFocoSomaGeral = Object.values(metricas).reduce((acc, m) => acc + m.metaPremium, 0);
     let pctMetaFocoGeral = metaFocoSomaGeral > 0 ? ((totalFocoVendidoGeral / metaFocoSomaGeral) * 100).toFixed(1) : 0; let pctCopartGeral = totalGeral > 0 ? ((totalFocoVendidoGeral / totalGeral) * 100).toFixed(1) : 0;
@@ -1770,7 +1773,6 @@ function gerarGraficos(dadosVendas) {
     let corTextoGrafico = document.body.classList.contains('dark-mode') ? '#e0e0e0' : '#666'; Chart.defaults.color = corTextoGrafico;
     const pluginDatalabels = ChartDataLabels; 
     
-    // BLINDAGEM DE GRÁFICO ZERADO
     let labelsProm = Object.keys(metricas);
     if (labelsProm.length === 0) {
         labelsProm = ["Sem Dados"];
@@ -1781,80 +1783,102 @@ function gerarGraficos(dadosVendas) {
     let maxMetaFoco = Math.max(...labelsProm.map(p => metricas[p].metaPremium)) || 10;
     let widthProm = Math.max(100, labelsProm.length * 18); 
 
-    // INSERE O CONTAINER DO GRÁFICO GERAL NO HTML SE AINDA NÃO EXISTIR
-    let htmlDash = document.getElementById('tela-dashboard').innerHTML;
-    if (!htmlDash.includes('graficoMetaGeral')) {
-        let elementoAlvo = document.getElementById('wrap-graficoMetaPremiumCapa').parentElement.parentElement;
-        elementoAlvo.insertAdjacentHTML('beforebegin', `
-        <div style="background: var(--bg-container); padding: 20px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 12px var(--shadow-color); border: 1px solid var(--border-color);">
-            <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="target" style="color:#0086ff;"></i> Meta Geral vs Realizado</h4>
-            <div style="width: 100%; overflow-x: auto; overflow-y: hidden;">
-                <div id="wrap-graficoMetaGeral" style="position: relative; height: 350px; min-width: 100%;">
-                    <canvas id="graficoMetaGeral"></canvas>
+    // GARANTE A EXISTÊNCIA SEGURA DO CONTAINER DO GRÁFICO GERAL
+    let wrapGeral = document.getElementById('wrap-graficoMetaGeral');
+    if (!wrapGeral) {
+        let wrapPremium = document.getElementById('wrap-graficoMetaPremiumCapa');
+        if (wrapPremium && wrapPremium.parentElement && wrapPremium.parentElement.parentElement) {
+            let elementoAlvo = wrapPremium.parentElement.parentElement;
+            elementoAlvo.insertAdjacentHTML('beforebegin', `
+            <div style="background: var(--bg-container); padding: 20px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 12px var(--shadow-color); border: 1px solid var(--border-color);">
+                <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="target" style="color:#0086ff;"></i> Meta Geral vs Realizado</h4>
+                <div style="width: 100%; overflow-x: auto; overflow-y: hidden;">
+                    <div id="wrap-graficoMetaGeral" style="position: relative; height: 350px; min-width: 100%;">
+                        <canvas id="graficoMetaGeral"></canvas>
+                    </div>
                 </div>
-            </div>
-        </div>`);
-        loadIcons();
+            </div>`);
+            loadIcons();
+            wrapGeral = document.getElementById('wrap-graficoMetaGeral');
+        }
     }
 
-    document.getElementById('wrap-graficoMetaGeral').style.minWidth = widthProm + '%';
-    document.getElementById('wrap-graficoMetaPremiumCapa').style.minWidth = widthProm + '%';
-    document.getElementById('wrap-graficoCoparticipacaoPromotores').style.minWidth = widthProm + '%';
+    if (wrapGeral) wrapGeral.style.minWidth = widthProm + '%';
+    let wrapPrem = document.getElementById('wrap-graficoMetaPremiumCapa');
+    if (wrapPrem) wrapPrem.style.minWidth = widthProm + '%';
+    let wrapCop = document.getElementById('wrap-graficoCoparticipacaoPromotores');
+    if (wrapCop) wrapCop.style.minWidth = widthProm + '%';
 
     // 1. GRÁFICO: META GERAL
-    const ctxGeral = document.getElementById('graficoMetaGeral').getContext('2d');
-    chartMetaGeral = new Chart(ctxGeral, {
-        type: 'bar', plugins: [pluginDatalabels],
-        data: { 
-            labels: labelsProm, 
-            datasets: [
-                { label: 'Meta Total (un)', data: labelsProm.map(p => Number(Math.round(metricas[p].metaIndividual * 10) / 10) || 0), backgroundColor: '#c0c0c0' }, 
-                { label: 'Realizado Total', data: labelsProm.map(p => Number(metricas[p].realizadoGeral) || 0), backgroundColor: '#0086ff' }
-            ]
-        },
-        options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { position: 'bottom' }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { if (ctx.datasetIndex === 0) return val + ' un'; let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; let pct = m.metaIndividual > 0 ? ((val / m.metaIndividual) * 100).toFixed(1) : 0; return [`${val} un`, `(${pct}%)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { y: { beginAtZero: true, suggestedMax: maxMetaGeral * 1.3 } } }
-    });
+    let elGeralCanvas = document.getElementById('graficoMetaGeral');
+    if (elGeralCanvas) {
+        const ctxGeral = elGeralCanvas.getContext('2d');
+        chartMetaGeral = new Chart(ctxGeral, {
+            type: 'bar', plugins: [pluginDatalabels],
+            data: { 
+                labels: labelsProm, 
+                datasets: [
+                    { label: 'Meta Total (un)', data: labelsProm.map(p => Number(Math.round(metricas[p].metaIndividual * 10) / 10) || 0), backgroundColor: '#c0c0c0' }, 
+                    { label: 'Realizado Total', data: labelsProm.map(p => Number(metricas[p].realizadoGeral) || 0), backgroundColor: '#0086ff' }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { position: 'bottom' }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { if (ctx.datasetIndex === 0) return val + ' un'; let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; let pct = m.metaIndividual > 0 ? ((val / m.metaIndividual) * 100).toFixed(1) : 0; return [`${val} un`, `(${pct}%)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { y: { beginAtZero: true, suggestedMax: maxMetaGeral * 1.3 } } }
+        });
+    }
 
     // 2. GRÁFICO: META FOCO
-    const ctxCapa = document.getElementById('graficoMetaPremiumCapa').getContext('2d');
-    chartCapa = new Chart(ctxCapa, {
-        type: 'bar', plugins: [pluginDatalabels],
-        data: { 
-            labels: labelsProm, 
-            datasets: [
-                { label: 'Meta Foco (un)', data: labelsProm.map(p => Number(Math.round(metricas[p].metaPremium * 10) / 10) || 0), backgroundColor: '#c0c0c0' }, 
-                { label: 'Realizado Foco', data: labelsProm.map(p => Number(metricas[p].realizadoPremium) || 0), backgroundColor: '#ffc107' }
-            ]
-        },
-        options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { position: 'bottom' }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { if (ctx.datasetIndex === 0) return val + ' un'; let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; let pct = m.metaPremium > 0 ? ((val / m.metaPremium) * 100).toFixed(1) : 0; return [`${val} un`, `(${pct}%)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { y: { beginAtZero: true, suggestedMax: maxMetaFoco * 1.3 } } }
-    });
+    let elFocoCanvas = document.getElementById('graficoMetaPremiumCapa');
+    if (elFocoCanvas) {
+        const ctxCapa = elFocoCanvas.getContext('2d');
+        chartCapa = new Chart(ctxCapa, {
+            type: 'bar', plugins: [pluginDatalabels],
+            data: { 
+                labels: labelsProm, 
+                datasets: [
+                    { label: 'Meta Foco (un)', data: labelsProm.map(p => Number(Math.round(metricas[p].metaPremium * 10) / 10) || 0), backgroundColor: '#c0c0c0' }, 
+                    { label: 'Realizado Foco', data: labelsProm.map(p => Number(metricas[p].realizadoPremium) || 0), backgroundColor: '#ffc107' }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { position: 'bottom' }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { if (ctx.datasetIndex === 0) return val + ' un'; let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; let pct = m.metaPremium > 0 ? ((val / m.metaPremium) * 100).toFixed(1) : 0; return [`${val} un`, `(${pct}%)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { y: { beginAtZero: true, suggestedMax: maxMetaFoco * 1.3 } } }
+        });
+    }
 
     // 3. GRÁFICO: COPARTICIPAÇÃO
-    const ctxCopart = document.getElementById('graficoCoparticipacaoPromotores').getContext('2d');
-    chartCoparticipacao = new Chart(ctxCopart, {
-        type: 'bar', plugins: [pluginDatalabels],
-        data: { 
-            labels: labelsProm, 
-            datasets: [
-                { label: '% Coparticipação', data: labelsProm.map(p => metricas[p].realizadoGeral > 0 ? Number(((metricas[p].realizadoPremium / metricas[p].realizadoGeral) * 100).toFixed(1)) : 0), backgroundColor: '#17a2b8' }
-            ] 
-        },
-        options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { display: false }, tooltip: { padding: 12, callbacks: { label: function(context) { let p = context.chart.data.labels[context.dataIndex]; let m = metricas[p]; let linhas = [`Coparticipação: ${context.raw}% (${m.realizadoPremium} de ${m.realizadoGeral} un)`]; if (m.realizadoPremium > 0) { linhas.push('-------------------------'); linhas.push('Aparelhos Foco Vendidos:'); for (let mod in m.modelosPremiumVendidos) { linhas.push(`• ${m.modelosPremiumVendidos[mod]}x ${mod}`); } } else { linhas.push('-------------------------'); linhas.push('Nenhum aparelho foco vendido.'); } return linhas; } } }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; return [`${val}%`, `(${m.realizadoPremium} de ${m.realizadoGeral} un)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { y: { beginAtZero: true, suggestedMax: 100 } } }
-    });
+    let elCopartCanvas = document.getElementById('graficoCoparticipacaoPromotores');
+    if (elCopartCanvas) {
+        const ctxCopart = elCopartCanvas.getContext('2d');
+        chartCoparticipacao = new Chart(ctxCopart, {
+            type: 'bar', plugins: [pluginDatalabels],
+            data: { 
+                labels: labelsProm, 
+                datasets: [
+                    { label: '% Coparticipação', data: labelsProm.map(p => metricas[p].realizadoGeral > 0 ? Number(((metricas[p].realizadoPremium / metricas[p].realizadoGeral) * 100).toFixed(1)) : 0), backgroundColor: '#17a2b8' }
+                ] 
+            },
+            options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { display: false }, tooltip: { padding: 12, callbacks: { label: function(context) { let p = context.chart.data.labels[context.dataIndex]; let m = metricas[p]; let linhas = [`Coparticipação: ${context.raw}% (${m.realizadoPremium} de ${m.realizadoGeral} un)`]; if (m.realizadoPremium > 0) { linhas.push('-------------------------'); linhas.push('Aparelhos Foco Vendidos:'); for (let mod in m.modelosPremiumVendidos) { linhas.push(`• ${m.modelosPremiumVendidos[mod]}x ${mod}`); } } else { linhas.push('-------------------------'); linhas.push('Nenhum aparelho foco vendido.'); } return linhas; } } }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; return [`${val}%`, `(${m.realizadoPremium} de ${m.realizadoGeral} un)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { y: { beginAtZero: true, suggestedMax: 100 } } }
+        });
+    }
 
     // 4. GRÁFICO DE LOJAS
     let lojasSort = Object.keys(vendasPorLoja).sort((a,b) => a.localeCompare(b, undefined, {numeric:true, sensitivity:'base'}));
     if (lojasSort.length === 0) lojasSort = ["Nenhuma Loja"];
-    let widthLojas = Math.max(100, lojasSort.length * 18); document.getElementById('wrap-graficoVendasLoja').style.minWidth = widthLojas + '%';
+    let wrapLojas = document.getElementById('wrap-graficoVendasLoja');
+    if(wrapLojas) wrapLojas.style.minWidth = Math.max(100, lojasSort.length * 18) + '%';
 
-    const ctxLojas = document.getElementById('graficoVendasLoja').getContext('2d');
-    chartLojas = new Chart(ctxLojas, { type: 'bar', plugins: [pluginDatalabels], data: { labels: lojasSort, datasets: [{ data: lojasSort.map(l => Number(vendasPorLoja[l]) || 0), backgroundColor: '#28a745', borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 20 } }, scales: { x: { ticks: { display: false }, grid: { display: false } }, y: { beginAtZero: true } }, plugins: { legend: { display: false }, tooltip: { padding: 12, callbacks: { title: function(context) { return '🏪 ' + context[0].label; }, afterTitle: function(context) { return '👤 Promotor: ' + getPromotorDaLoja(context[0].label); }, label: function(context) { return 'Total Vendido: ' + context.raw + ' un'; } } }, datalabels: { anchor: 'end', align: 'top', color: corTextoGrafico, font: { weight: 'bold' }, formatter: (val) => val + ' un' } } } });
+    let elLojasCanvas = document.getElementById('graficoVendasLoja');
+    if (elLojasCanvas) {
+        const ctxLojas = elLojasCanvas.getContext('2d');
+        chartLojas = new Chart(ctxLojas, { type: 'bar', plugins: [pluginDatalabels], data: { labels: lojasSort, datasets: [{ data: lojasSort.map(l => Number(vendasPorLoja[l]) || 0), backgroundColor: '#28a745', borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 20 } }, scales: { x: { ticks: { display: false }, grid: { display: false } }, y: { beginAtZero: true } }, plugins: { legend: { display: false }, tooltip: { padding: 12, callbacks: { title: function(context) { return '🏪 ' + context[0].label; }, afterTitle: function(context) { return '👤 Promotor: ' + getPromotorDaLoja(context[0].label); }, label: function(context) { return 'Total Vendido: ' + context.raw + ' un'; } } }, datalabels: { anchor: 'end', align: 'top', color: corTextoGrafico, font: { weight: 'bold' }, formatter: (val) => val + ' un' } } } });
+    }
 
     // 5. GRÁFICO PIZZA (TOP MODELOS)
     let topModelos = Object.entries(vendasPorModelo).sort((a, b) => b[1] - a[1]).slice(0, 5);
     if (topModelos.length === 0) topModelos = [["Nenhum", 1]];
-    const ctxModelos = document.getElementById('graficoTopModelos').getContext('2d');
-    chartModelos = new Chart(ctxModelos, { type: 'doughnut', plugins: [pluginDatalabels], data: { labels: topModelos.map(m => `${m[0]}`), datasets: [{ data: topModelos.map(m => m[1]), backgroundColor: ['#0086ff', '#28a745', '#ffc107', '#dc3545', '#6f42c1'] }] }, options: { maintainAspectRatio: false, responsive: true, plugins: { legend: { position: 'bottom', labels: { color: corTextoGrafico } }, datalabels: { color: '#fff', font: { weight: 'bold', size: 12 }, formatter: (value) => value > 0 && topModelos[0][0] !== "Nenhum" ? value + ' un' : '' } } } });
+    let elModelosCanvas = document.getElementById('graficoTopModelos');
+    if (elModelosCanvas) {
+        const ctxModelos = elModelosCanvas.getContext('2d');
+        chartModelos = new Chart(ctxModelos, { type: 'doughnut', plugins: [pluginDatalabels], data: { labels: topModelos.map(m => `${m[0]}`), datasets: [{ data: topModelos.map(m => m[1]), backgroundColor: ['#0086ff', '#28a745', '#ffc107', '#dc3545', '#6f42c1'] }] }, options: { maintainAspectRatio: false, responsive: true, plugins: { legend: { position: 'bottom', labels: { color: corTextoGrafico } }, datalabels: { color: '#fff', font: { weight: 'bold', size: 12 }, formatter: (value) => value > 0 && topModelos[0][0] !== "Nenhum" ? value + ' un' : '' } } } });
+    }
 }
 
 function abrirAdmin() { 
