@@ -515,8 +515,12 @@
 
 </div>
 
-<!-- CARREGAMENTO DO ARQUIVO JS EXTERNO -->
-<script src="app.js"></script>
+<!-- CARREGAMENTO DO ARQUIVO JS EXTERNO USANDO INJEÇÃO DINÂMICA (FURA-CACHE) -->
+<script>
+    var script = document.createElement('script');
+    script.src = 'app.js?v=' + new Date().getTime();
+    document.body.appendChild(script);
+</script>
 
 <!-- ATIVAÇÃO DO APLICATIVO (SERVICE WORKER) -->
 <script>
