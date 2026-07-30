@@ -1,7 +1,7 @@
 // URL DA SUA API DO GOOGLE APPS SCRIPT
 const URL_DA_SUA_API = "https://script.google.com/macros/s/AKfycbzg7zvtitqzNtB7ghbZ-zg0-W3fTrkAswlORizvAfyPETdbHivMRqvJyrfTEZ36WuXGPQ/exec";
 
-// HELPER GLOBAL
+// HELPER GLOBAL - Blinda o sistema contra erros de nome de colunas
 const getVal = (obj, possiveisNomes) => {
     if (!obj) return "";
     let chave = Object.keys(obj).find(k => possiveisNomes.includes(k.toLowerCase().trim()));
@@ -164,6 +164,7 @@ function inicializarSistema() {
         }
     }, 8000);
 
+    // REMOVIDA A TRAVA DE SEGURANÇA (credentials/cache) QUE BLOQUEAVA O GOOGLE APPS SCRIPT
     fetch(URL_DA_SUA_API + "?acao=config" + noCache())
     .then(r => { if (!r.ok) throw new Error("Erro na rede"); return r.json(); })
     .then(res => {
@@ -566,6 +567,8 @@ async function sincronizarFilaOffline() {
     for (let item of copiaFila) { try { await fetch(URL_DA_SUA_API, { method: "POST", body: JSON.stringify(item.payload), mode: "no-cors", headers: { "Content-Type": "text/plain; charset=utf-8" } }); mostrarToast(`<strong>Sincronizado:</strong><br>${item.descricao}`, "sucesso"); } catch (e) { filaOffline.push(item); localStorage.setItem('filaOffline', JSON.stringify(filaOffline)); } }
 }
 
+// ================= ACOMPANHAMENTO =================
+
 function abrirAcompanhamento() { mudarTela('tela-acompanhamento'); if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") { promotorFiltroAtual = "todos"; } else { promotorFiltroAtual = usuarioLogado.id; } subPromotorFiltroAtual = "todos"; renderizarFiltroPromotores(); carregarDadosDoBanco(); }
 
 function renderizarFiltroPromotores() {
@@ -790,7 +793,6 @@ function renderizarFiltrosDash() {
 
     div.innerHTML = `<div style="display:flex; flex-wrap: wrap; gap: 10px; background: var(--bg-item); padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 2px 8px var(--shadow-color);">${html}</div>`;
     
-    // Esconder filtros antigos se existirem
     let velhoContainerSup = document.getElementById('container-filtro-supervisor-dash');
     if (velhoContainerSup) velhoContainerSup.style.display = 'none';
     let velhoContainerProm = document.getElementById('container-filtro-promotor-dash');
@@ -927,29 +929,26 @@ function toggleComissao() {
     if (elComissao.innerText === "R$ ****") { elComissao.innerText = elComissao.dataset.valor || "R$ 0,00"; iconeOlho.innerHTML = '<i data-lucide="eye-off" style="margin:0;"></i>'; } else { elComissao.innerText = "R$ ****"; iconeOlho.innerHTML = '<i data-lucide="eye" style="margin:0;"></i>'; } loadIcons();
 }
 
-let chartMetaGeral = null;
-
-// FUNÇÃO SEGURA DE DESTRUIR E CRIAR CANVAS
 function recriarCanvasSeguro(idWrap, idCanvas) {
     let wrap = document.getElementById(idWrap);
     if (!wrap) return null;
     wrap.innerHTML = `<canvas id="${idCanvas}"></canvas>`;
-    return document.getElementById(idCanvas).getContext('2d');
+    let canvasEl = document.getElementById(idCanvas);
+    return canvasEl ? canvasEl.getContext('2d') : null;
 }
 
 function gerarGraficosDash(dadosVendas) {
-    if (!dadosVendas) dadosVendas = [];
-    
-    let escopoPermitidos = obterEscopoPromotoresDash();
-    
+    let u = usuarioLogado;
     let elReg = document.getElementById('dash-filtro-reg'); let valReg = elReg ? elReg.value : "todos";
     let elSup = document.getElementById('dash-filtro-sup'); let valSup = elSup ? elSup.value : "todos";
     let elProm = document.getElementById('dash-filtro-prom'); let valProm = elProm ? elProm.value : "todos";
-    let u = usuarioLogado;
     
     if (u.cargo === "regional") valReg = u.regiao;
     if (u.cargo === "supervisor") valSup = u.id;
     if (u.cargo === "promotor") valProm = u.id;
+
+    let escopoPermitidos = obterEscopoPromotoresDash();
+    let agrupamento = (u.cargo === "promotor" || valProm !== "todos" || (valSup !== "todos" && valSup !== "orfaos")) ? "promotor" : "supervisor";
 
     let metricas = {};
     let vendasPorLoja = {};
@@ -958,21 +957,19 @@ function gerarGraficosDash(dadosVendas) {
     let rankingPorLoja = {};
     let totalGeral = 0;
 
-    // DEFINIÇÃO DO AGRUPAMENTO
     function definirBucket(idProm) {
         let p = bancoUsuarios[idProm];
         if (!p) return "Desconhecido";
         
-        if (valProm !== "todos" || u.cargo === "promotor" || valSup !== "todos" || u.cargo === "supervisor") {
+        if (agrupamento === "promotor") {
             return p.nome || idProm;
         } else {
-            let supId = p.criadoPor;
-            let isOrfao = (!supId || !bancoUsuarios[supId]);
-            return isOrfao ? "⚠️ Órfãos" : (bancoUsuarios[supId].nome || "Equipe " + supId);
+            let pSup = p.criadoPor || "orfaos";
+            let isOrfao = (pSup === "orfaos" || !bancoUsuarios[pSup]);
+            return isOrfao ? "⚠️ Órfãos" : (bancoUsuarios[pSup].nome || "Equipe " + pSup);
         }
     }
 
-    // INICIALIZA AS METAS
     escopoPermitidos.forEach(pId => {
         let p = bancoUsuarios[pId];
         let bucket = definirBucket(pId);
@@ -985,10 +982,10 @@ function gerarGraficosDash(dadosVendas) {
         
         if (!metricas[bucket]) {
             metricas[bucket] = { 
-                nome: bucket, loginSupConfig: supKey,
+                nome: bucket, loginSupConfig: supKey, 
                 metaIndividual: 0, metaPremium: 0, 
                 realizadoGeral: 0, realizadoPremium: 0, 
-                modelosPremiumVendidos: {}, modelosVendidosGeral: {}, comissaoAcumulada: 0,
+                modelosPremiumVendidos: {}, comissaoAcumulada: 0,
             };
         }
         
@@ -996,7 +993,6 @@ function gerarGraficosDash(dadosVendas) {
         metricas[bucket].metaPremium += (metaInd * (taxaSup / 100));
     });
 
-    // VARREDURA DE VENDAS
     dadosVendas.forEach(row => {
         let rowVendedor = getVal(row, ['vendedor', 'vend', 'promotor']);
         let match = rowVendedor.match(/^\[(.*?)\]\s*(.*)$/); 
@@ -1018,7 +1014,7 @@ function gerarGraficosDash(dadosVendas) {
         
         if (promotoresImpactados.size === 0) {
             if (valReg === "todos" && valSup === "todos" && valProm === "todos" && (u.cargo === "master" || u.cargo === "gestor")) {
-                promotoresImpactados.add("fantasma_sistema"); // Para somar no Total Geral
+                promotoresImpactados.add("fantasma_sistema"); 
             } else { return; }
         }
 
@@ -1026,7 +1022,7 @@ function gerarGraficosDash(dadosVendas) {
         vendasPorLoja[loja] = (vendasPorLoja[loja] || 0) + qtd;
         
         let vizVendedores = (valProm !== "todos" || valSup !== "todos" || u.cargo === "supervisor" || u.cargo === "promotor");
-        if (vizVendedores && !promotoresImpactados.has("fantasma_sistema")) {
+        if (vizVendedores && promotoresImpactados.size > 0 && !promotoresImpactados.has("fantasma_sistema")) {
             if (!rankingPorLoja[loja]) rankingPorLoja[loja] = {};
             vendNome.split(" e ").forEach(vN => { 
                 let v = vN.trim(); 
@@ -1042,9 +1038,11 @@ function gerarGraficosDash(dadosVendas) {
             vendasPorModelo[modeloFormatado] = (vendasPorModelo[modeloFormatado] || 0) + 1; 
             
             promotoresImpactados.forEach(pKey => {
-                if (pKey === "fantasma_sistema") return; // IGNORA O FANTASMA
+                if (pKey === "fantasma_sistema") return; 
                 
                 let p = bancoUsuarios[pKey];
+                if (!p) return; 
+
                 let supKey = p.criadoPor || "geral";
                 let checkPrem = ehPremium(ap, supKey);
                 let bucket = definirBucket(pKey);
@@ -1076,36 +1074,22 @@ function gerarGraficosDash(dadosVendas) {
         let vComissaoSup = valoresComissao[supKey] || valoresComissao["geral"] || {}; 
         let niveisGlobais = vComissaoSup.niveis || [{ id: 'l1', meta: 0 }, { id: 'l2', meta: 10 }];
         let aparelhosCfg = vComissaoSup.aparelhos || {};
-        let campanhasAtivas = vComissaoSup.campanhasPersonalizadas || [];
 
         for(let modChave in m.modelosPremiumVendidos) {
             let qtdMod = m.modelosPremiumVendidos[modChave];
             let cfg = aparelhosCfg[modChave] || {}; 
-            
             let nivelAlcancado = 'l1'; 
             let maiorMeta = -1;
             
             niveisGlobais.forEach(nv => { 
                 let metaParaNivel = (cfg[nv.id + '_meta'] !== undefined && cfg[nv.id + '_meta'] !== "") ? Number(cfg[nv.id + '_meta']) : Number(nv.meta);
                 if (m.realizadoGeral >= metaParaNivel && metaParaNivel >= maiorMeta) { 
-                    nivelAlcancado = nv.id; 
-                    maiorMeta = metaParaNivel; 
+                    nivelAlcancado = nv.id; maiorMeta = metaParaNivel; 
                 } 
             });
-
             let payout = Number(cfg[nivelAlcancado]) || Number(cfg['l1']) || 0;
             comissaoUser += (qtdMod * payout);
         }
-
-        campanhasAtivas.forEach(camp => {
-            if (isCampaignActiveInMonth(camp.dataInicio, camp.dataFim, mesFiltro)) {
-                if (camp.promotorAlvo && camp.promotorAlvo !== 'todos' && camp.promotorAlvo !== m.login) { return; }
-                let qtdParaBater = 0;
-                if (camp.aparelho === 'todos') { qtdParaBater = m.realizadoPremium; } else { qtdParaBater = m.modelosVendidosGeral[camp.aparelho] || 0; }
-                if (qtdParaBater >= Number(camp.qtdMinima)) { comissaoUser += (qtdParaBater * Number(camp.bonus)); }
-            }
-        });
-
         m.comissaoAcumulada = comissaoUser;
     });
 
@@ -1130,8 +1114,8 @@ function gerarGraficosDash(dadosVendas) {
     let listaFocoAtuais = Object.keys(pSup).filter(k => pSup[k]).map(k => `<span style="display:inline-block; background:var(--bg-item); color:var(--cor-texto); padding:4px 8px; border-radius:6px; margin:2px; border: 1px solid var(--border-color); font-weight:bold;">${mapaEmojis[k] || ''} ${k.toUpperCase()}</span>`);
     document.getElementById("lista-foco-ativo-dash").innerHTML = listaFocoAtuais.length > 0 ? listaFocoAtuais.join("") : "<span style='color:var(--cor-secundaria); font-style:italic;'>Nenhum aparelho configurado como Foco.</span>";
 
-    let totalFocoVendidoGeral = Object.values(metricas).reduce((acc, m) => acc + m.realizadoPremium, 0); 
-    let metaFocoSomaGeral = Object.values(metricas).reduce((acc, m) => acc + m.metaPremium, 0);
+    let totalFocoVendidoGeral = Object.values(metricas).reduce((acc, m) => acc + (m.realizadoPremium || 0), 0); 
+    let metaFocoSomaGeral = Object.values(metricas).reduce((acc, m) => acc + (m.metaPremium || 0), 0);
     let pctMetaFocoGeral = metaFocoSomaGeral > 0 ? ((totalFocoVendidoGeral / metaFocoSomaGeral) * 100).toFixed(1) : 0; 
     let pctCopartGeral = totalGeral > 0 ? ((totalFocoVendidoGeral / totalGeral) * 100).toFixed(1) : 0;
 
@@ -1159,7 +1143,7 @@ function gerarGraficosDash(dadosVendas) {
             });
         }
     } else {
-        document.getElementById("titulo-ranking-dash").innerHTML = '<i data-lucide="award"></i> Ranking de Equipes (vs Meta)';
+        document.getElementById("titulo-ranking-dash").innerHTML = (agrupamento === "promotor") ? '<i data-lucide="award"></i> Ranking de Promotores (vs Meta Individual)' : '<i data-lucide="award"></i> Ranking de Equipes (vs Meta)';
         let promOrd = Object.keys(metricas).sort((a,b) => metricas[b].realizadoGeral - metricas[a].realizadoGeral);
         let rNum = 1; let uQtd = -1;
         promOrd.forEach(p => {
@@ -1167,12 +1151,11 @@ function gerarGraficosDash(dadosVendas) {
             let bC = rNum === 1 ? 'rank-1' : rNum === 2 ? 'rank-2' : rNum === 3 ? 'rank-3' : 'rank-outros';
             let metaAlvo = m.metaIndividual; let pctHit = metaAlvo > 0 ? ((m.realizadoGeral / metaAlvo) * 100).toFixed(1) : 0; let corHit = pctHit >= 100 ? '#28a745' : '#dc3545';
             let pctFocoVendedor = m.realizadoGeral > 0 ? ((m.realizadoPremium / m.realizadoGeral) * 100).toFixed(1) : 0;
-            htmlRank += `<div style="display:flex;flex-direction:column;padding:12px 0;border-bottom:1px dashed var(--border-color);"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><div style="display:flex;align-items:center;gap:10px;"><span class="badge-rank ${bC}">${rNum}º</span><strong style="font-size: 15px; color: var(--cor-texto);"><i data-lucide="users" class="lucide-sm"></i> ${p}</strong></div><span style="background:var(--bg-item);color:#0086ff;font-weight:bold;padding:4px 10px;border-radius:6px;font-size:14px; border: 1px solid var(--border-color);">${m.realizadoGeral} un</span></div><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--cor-secundaria);background:var(--bg-item);padding:4px 8px;border-radius:4px;"><span>🎯 Meta Acumulada: <strong style="color: var(--cor-texto);">${metaAlvo} un</strong></span><span style="color: ${corHit}; font-weight: bold;">${pctHit}% Concluído</span></div><div style="font-size:11px; color:var(--cor-secundaria); text-align:left; padding-left:4px; margin-top:2px;">Coparticipação Foco: <strong>${m.realizadoPremium} un</strong> (<span style="color:#28a745;">${pctFocoVendedor}%</span>)</div></div>`;
+            htmlRank += `<div style="display:flex;flex-direction:column;padding:12px 0;border-bottom:1px dashed var(--border-color);"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><div style="display:flex;align-items:center;gap:10px;"><span class="badge-rank ${bC}">${rNum}º</span><strong style="font-size: 15px; color: var(--cor-texto);"><i data-lucide="${agrupamento === 'promotor' ? 'user' : 'users'}" class="lucide-sm"></i> ${p}</strong></div><span style="background:var(--bg-item);color:#0086ff;font-weight:bold;padding:4px 10px;border-radius:6px;font-size:14px; border: 1px solid var(--border-color);">${m.realizadoGeral} un</span></div><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--cor-secundaria);background:var(--bg-item);padding:4px 8px;border-radius:4px;"><span>🎯 Meta Acumulada: <strong style="color: var(--cor-texto);">${metaAlvo} un</strong></span><span style="color: ${corHit}; font-weight: bold;">${pctHit}% Concluído</span></div><div style="font-size:11px; color:var(--cor-secundaria); text-align:left; padding-left:4px; margin-top:2px;">Coparticipação Foco: <strong>${m.realizadoPremium} un</strong> (<span style="color:#28a745;">${pctFocoVendedor}%</span>)</div></div>`;
         });
     }
-    document.getElementById("lista-ranking-promotores").innerHTML = htmlRank || "<span style='font-size:13px; color:var(--cor-secundaria);'>Nenhuma venda na região selecionada.</span>"; loadIcons();
+    document.getElementById("lista-ranking-promotores").innerHTML = htmlRank || "<span style='font-size:13px; color:var(--cor-secundaria);'>Nenhum dado encontrado no filtro.</span>"; loadIcons();
 
-    // =============== DESTRÓI OS GRÁFICOS ANTIGOS ===============
     if (chartCoparticipacao) { chartCoparticipacao.destroy(); chartCoparticipacao = null; }
     if (chartCapa) { chartCapa.destroy(); chartCapa = null; }
     if (chartLojas) { chartLojas.destroy(); chartLojas = null; }
@@ -1182,7 +1165,6 @@ function gerarGraficosDash(dadosVendas) {
     let containerDynamicID = 'container-graficos-dinamicos-fix';
     let containerDash = document.getElementById(containerDynamicID);
     
-    // FORÇA A DESTRUIÇÃO DE TUDO O QUE EXISTE NA TELA PARA NÃO BUGAR O CANVAS NUNCA MAIS
     if (!containerDash) {
         let elAncora = document.getElementById('detalhe-coparticipacao-cards').parentElement;
         elAncora.insertAdjacentHTML('afterend', `<div id="${containerDynamicID}"></div>`);
