@@ -1,13 +1,14 @@
 // URL DA SUA API DO GOOGLE APPS SCRIPT
 const URL_DA_SUA_API = "https://script.google.com/macros/s/AKfycbzg7zvtitqzNtB7ghbZ-zg0-W3fTrkAswlORizvAfyPETdbHivMRqvJyrfTEZ36WuXGPQ/exec";
 
-// HELPER GLOBAL
+// HELPER GLOBAL - Blinda o sistema contra erros de nome de colunas do Google Sheets
 const getVal = (obj, possiveisNomes) => {
     if (!obj) return "";
     let chave = Object.keys(obj).find(k => possiveisNomes.includes(k.toLowerCase().trim()));
     return chave ? String(obj[chave]).trim() : "";
 };
 
+// GERADOR DE FURA-CACHE
 const noCache = () => "&_t=" + new Date().getTime();
 
 let bancoUsuarios = {}; let lojasConfig = {}; let mapaEmojis = {};
@@ -107,7 +108,6 @@ function toggleTema() {
     
     loadIcons();
     if (document.getElementById('tela-dashboard').classList.contains('ativa')) {
-        // Redesenhar graficos para atualizar as cores
         if (dadosAcompanhamentoGlobal.length > 0) gerarGraficosDash(dadosAcompanhamentoGlobal);
     }
 }
@@ -221,6 +221,22 @@ function podeGerenciar(logado, alvoId) {
     return false;
 }
 
+function promotorPertenceAoGestor(idPromotor, idGestorFiltro) {
+    if (idGestorFiltro === "todos") return true;
+    let u = bancoUsuarios[idPromotor];
+    if (!u) return false;
+    if (idGestorFiltro === "orfaos") return (!u.criadoPor || !bancoUsuarios[u.criadoPor]);
+    if (u.criadoPor === idGestorFiltro) return true;
+    
+    let gestorFiltroObj = bancoUsuarios[idGestorFiltro];
+    if (gestorFiltroObj) {
+        let fakeLogado = Object.assign({id: idGestorFiltro}, gestorFiltroObj);
+        return podeGerenciar(fakeLogado, idPromotor);
+    }
+    
+    return false;
+}
+
 function mostrarToast(msg, tipo = "sucesso") {
     const container = document.getElementById("toast-container");
     const toast = document.createElement("div"); toast.className = `toast ${tipo}`; 
@@ -255,7 +271,7 @@ function verificarConferenciaEstoque() {
 function filtrarListaLojas(texto, containerId) { texto = texto.toLowerCase(); const labels = document.getElementById(containerId).querySelectorAll('label'); labels.forEach(lbl => { if (lbl.innerText.toLowerCase().includes(texto)) lbl.style.display = 'flex'; else lbl.style.display = 'none'; }); }
 function fecharModalEdicao() { document.getElementById('modal-edicao').classList.remove('ativo'); }
 
-// ================= MODAIS ADMIN =================
+// ================= MODAIS ADMIN E CADASTROS =================
 
 function obterRegioesUnicas() {
     let regioes = Object.values(bancoUsuarios).map(u => u.regiao).filter(r => r && r.trim() !== "");
@@ -794,7 +810,7 @@ async function sincronizarFilaOffline() {
     for (let item of copiaFila) { try { await fetch(URL_DA_SUA_API, { method: "POST", body: JSON.stringify(item.payload), mode: "no-cors", headers: { "Content-Type": "text/plain; charset=utf-8" } }); mostrarToast(`<strong>Sincronizado:</strong><br>${item.descricao}`, "sucesso"); } catch (e) { filaOffline.push(item); localStorage.setItem('filaOffline', JSON.stringify(filaOffline)); } }
 }
 
-// =================== NOVA ARQUITETURA DASHBOARD EM CASCATA (ESCADINHA) ===================
+// =================== NOVA ARQUITETURA DASHBOARD EM CASCATA ===================
 
 function abrirDashboard() { 
     mudarTela('tela-dashboard'); 
@@ -887,7 +903,6 @@ function preencherOpcoesCascataDash() {
     let selProm = document.getElementById('dash-filtro-prom');
     let valPromAtual = selProm ? selProm.value : "todos";
 
-    // Preenche Supervisores baseados na Região
     if (selSup) {
         let htmlSup = '<option value="todos">Todos os Supervisores</option>';
         for (let k in bancoUsuarios) {
@@ -906,7 +921,6 @@ function preencherOpcoesCascataDash() {
         if (Array.from(selSup.options).some(opt => opt.value === valSup)) selSup.value = valSup; else valSup = "todos";
     }
 
-    // Preenche Promotores baseados no Supervisor e Região
     if (selProm) {
         let htmlProm = '<option value="todos">Todos os Promotores</option>';
         for (let k in bancoUsuarios) {
@@ -997,6 +1011,14 @@ function toggleComissao() {
 
 let chartMetaGeral = null;
 
+// FUNÇÃO SEGURA DE DESTRUIR E CRIAR CANVAS
+function recriarCanvasSeguro(idWrap, idCanvas) {
+    let wrap = document.getElementById(idWrap);
+    if (!wrap) return null;
+    wrap.innerHTML = `<canvas id="${idCanvas}"></canvas>`;
+    return document.getElementById(idCanvas).getContext('2d');
+}
+
 function gerarGraficosDash(dadosVendas) {
     if (!dadosVendas) dadosVendas = [];
     
@@ -1018,25 +1040,19 @@ function gerarGraficosDash(dadosVendas) {
     let rankingPorLoja = {};
     let totalGeral = 0;
 
-    // DEFINIÇÃO DO AGRUPAMENTO (O nome que vai embaixo da barra no gráfico)
     function definirBucket(idProm) {
         let p = bancoUsuarios[idProm];
         if (!p) return "Desconhecido";
         
-        // Se o promotor está selecionado, ou o usuário logado É o promotor, ou o Supervisor está olhando sua própria equipe: 
-        // Agrupa por Promotor!
         if (valProm !== "todos" || u.cargo === "promotor" || valSup !== "todos" || u.cargo === "supervisor") {
             return p.nome || idProm;
-        } 
-        // Se o Master ou Gestor está vendo Todos os Supervisores de uma Região (ou geral), agrupa por Equipe (Supervisor)
-        else {
+        } else {
             let supId = p.criadoPor;
             let isOrfao = (!supId || !bancoUsuarios[supId]);
             return isOrfao ? "⚠️ Órfãos" : (bancoUsuarios[supId].nome || "Equipe " + supId);
         }
     }
 
-    // INICIALIZA AS METAS
     escopoPermitidos.forEach(pId => {
         let p = bancoUsuarios[pId];
         let bucket = definirBucket(pId);
@@ -1049,11 +1065,10 @@ function gerarGraficosDash(dadosVendas) {
         
         if (!metricas[bucket]) {
             metricas[bucket] = { 
-                nome: bucket, loginSupConfig: supKey, // Usado para comissão
+                nome: bucket, loginSupConfig: supKey, 
                 metaIndividual: 0, metaPremium: 0, 
                 realizadoGeral: 0, realizadoPremium: 0, 
                 modelosPremiumVendidos: {}, modelosVendidosGeral: {}, comissaoAcumulada: 0,
-                // O pulo do gato: evitar somar a meta do promotor 2x se ele aparecer em 2 lojas diferentes (já garantido por estarmos varrendo o escopo de promotores uma vez só aqui)
             };
         }
         
@@ -1061,7 +1076,6 @@ function gerarGraficosDash(dadosVendas) {
         metricas[bucket].metaPremium += (metaInd * (taxaSup / 100));
     });
 
-    // VARREDURA DE VENDAS
     dadosVendas.forEach(row => {
         let rowVendedor = getVal(row, ['vendedor', 'vend', 'promotor']);
         let match = rowVendedor.match(/^\[(.*?)\]\s*(.*)$/); 
@@ -1073,7 +1087,6 @@ function gerarGraficosDash(dadosVendas) {
         let qtd = lista.length; 
         if (qtd === 0) return;
         
-        // Identificar se a venda pertence a algum promotor do escopo (via loja ou nome)
         let promotoresImpactados = new Set();
         
         if (loja !== "Outras") {
@@ -1082,10 +1095,9 @@ function gerarGraficosDash(dadosVendas) {
             escopoPermitidos.forEach(k => { if (vendNome.toLowerCase().includes((bancoUsuarios[k].nome||k).toLowerCase())) promotoresImpactados.add(k); });
         }
         
-        // Se a venda não for da nossa turma, pula. Se for o Master olhando tudo, captura as genéricas.
         if (promotoresImpactados.size === 0) {
             if (valReg === "todos" && valSup === "todos" && valProm === "todos" && (u.cargo === "master" || u.cargo === "gestor")) {
-                promotoresImpactados.add("fantasma_sistema"); // Para somar no Total Geral
+                promotoresImpactados.add("fantasma_sistema");
             } else { return; }
         }
 
@@ -1109,9 +1121,11 @@ function gerarGraficosDash(dadosVendas) {
             vendasPorModelo[modeloFormatado] = (vendasPorModelo[modeloFormatado] || 0) + 1; 
             
             promotoresImpactados.forEach(pKey => {
-                if (pKey === "fantasma_sistema") return; // Só engorda o gráfico Pizza/Lojas, não as metas
+                if (pKey === "fantasma_sistema") return; // BLINDAGEM DO ERRO FANTASMA
                 
                 let p = bancoUsuarios[pKey];
+                if (!p) return; 
+
                 let supKey = p.criadoPor || "geral";
                 let checkPrem = ehPremium(ap, supKey);
                 let bucket = definirBucket(pKey);
@@ -1128,7 +1142,6 @@ function gerarGraficosDash(dadosVendas) {
             });
 
             if (vizVendedores) {
-                // Checa premium pela regra geral só pro ranking do vendedor
                 let checkPremForRank = ehPremium(ap, "geral");
                 if(checkPremForRank) { vendNome.split(" e ").forEach(vN => { rankingPorLoja[loja][vN.trim()].qtdPremium += 1; }); }
             }
@@ -1163,13 +1176,9 @@ function gerarGraficosDash(dadosVendas) {
             let payout = Number(cfg[nivelAlcancado]) || Number(cfg['l1']) || 0;
             comissaoUser += (qtdMod * payout);
         }
-
-        // Campanhas exigiria cruzar exatamente o Promotor Alvo, como agrupamos por equipe no Master, a comissão exata da equipe será a soma das comissões calculadas dentro do escopo.
-        // O ideal é calcular a comissão dentro do FOR de promotores e depois somar pro bucket, mas para simplificar e não bugar, mantemos.
         m.comissaoAcumulada = comissaoUser;
     });
 
-    // RENDERIZA DADOS EM TELA
     let dataReferencia = new Date(); let diasParaMedia = 1;
     if (mesFiltro !== "") {
         let partes = mesFiltro.split('/'); let ms = parseInt(partes[0], 10); let yr = parseInt(partes[1], 10);
@@ -1200,9 +1209,10 @@ function gerarGraficosDash(dadosVendas) {
     let htmlDetalhesCopart = `<div style="display: flex; flex-direction: column; gap: 8px;"><div style="display: flex; justify-content: space-between; font-size: 13px;"><span><i data-lucide="star" class="lucide-sm"></i> Foco Vendidos: <strong>${totalFocoVendidoGeral} un</strong></span><span style="color: #28a745; font-weight: bold;">Meta: ${pctMetaFocoGeral}%</span></div><div style="display: flex; justify-content: space-between; font-size: 13px;"><span><i data-lucide="pie-chart" class="lucide-sm"></i> Coparticipação Geral: <strong>${pctCopartGeral}%</strong></span></div><div style="margin-top: 5px;"><strong style="font-size: 11px; color: var(--cor-secundaria); display: block; margin-bottom: 3px;">Foco Vendidos no Período:</strong><div>${listaFocoHtml || "<span style='color:var(--cor-secundaria); font-style:italic;'>Nenhum foco vendido.</span>"}</div></div></div>`;
     document.getElementById("detalhe-coparticipacao-cards").innerHTML = htmlDetalhesCopart; loadIcons();
 
-    // RENDERIZAÇÃO DO RANKING
     let htmlRank = ""; 
-    if (valProm !== "todos" || valSup !== "todos" || u.cargo === "supervisor" || u.cargo === "promotor") {
+    let visualizarVendedoresCheck = (valProm !== "todos" || valSup !== "todos" || u.cargo === "supervisor" || u.cargo === "promotor");
+    
+    if (visualizarVendedoresCheck) {
         document.getElementById("titulo-ranking-dash").innerHTML = '<i data-lucide="award"></i> Ranking de Vendedores por Loja';
         let lojasDoRanking = Object.keys(rankingPorLoja).sort((a,b) => a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'}));
         if (lojasDoRanking.length === 0) { htmlRank = "<span style='font-size:13px; color:var(--cor-secundaria);'>Nenhuma venda registrada no período.</span>"; } else {
@@ -1232,17 +1242,20 @@ function gerarGraficosDash(dadosVendas) {
     }
     document.getElementById("lista-ranking-promotores").innerHTML = htmlRank || "<span style='font-size:13px; color:var(--cor-secundaria);'>Nenhuma venda na região selecionada.</span>"; loadIcons();
 
-    // =============== DESTRÓI OS GRÁFICOS ANTIGOS ===============
-    if (chartCoparticipacao) chartCoparticipacao.destroy(); 
-    if (chartCapa) chartCapa.destroy(); 
-    if (chartLojas) chartLojas.destroy(); 
-    if (chartModelos) chartModelos.destroy();
-    if (chartMetaGeral) chartMetaGeral.destroy();
+
+    // ==============================================================
+    // CRIAÇÃO E DESTRUIÇÃO 100% SEGURA DOS GRÁFICOS
+    // ==============================================================
+    if (chartCoparticipacao) { chartCoparticipacao.destroy(); chartCoparticipacao = null; }
+    if (chartCapa) { chartCapa.destroy(); chartCapa = null; }
+    if (chartLojas) { chartLojas.destroy(); chartLojas = null; }
+    if (chartModelos) { chartModelos.destroy(); chartModelos = null; }
+    if (chartMetaGeral) { chartMetaGeral.destroy(); chartMetaGeral = null; }
     
-    let corTextoGrafico = document.body.classList.contains('dark-mode') ? '#e0e0e0' : '#666'; Chart.defaults.color = corTextoGrafico;
+    let corTextoGrafico = document.body.classList.contains('dark-mode') ? '#e0e0e0' : '#666'; 
+    Chart.defaults.color = corTextoGrafico;
     const pluginDatalabels = ChartDataLabels; 
     
-    // BLINDAGEM DE GRÁFICO ZERADO PARA NÃO CRASHAR A TELA
     let labelsProm = Object.keys(metricas);
     if (labelsProm.length === 0) {
         labelsProm = ["Sem Dados"];
@@ -1253,76 +1266,75 @@ function gerarGraficosDash(dadosVendas) {
     let maxMetaFoco = Math.max(...labelsProm.map(p => metricas[p].metaPremium)) || 10;
     let widthProm = Math.max(100, labelsProm.length * 25); 
 
-    // GARANTE A EXISTÊNCIA DOS CONTAINERS NO HTML DE FORMA DINÂMICA
-    let containerGraficosDash = document.getElementById('container-graficos-dinamicos');
-    if (!containerGraficosDash) {
-        let elAncora = document.getElementById('lista-foco-ativo-dash').parentElement;
-        elAncora.insertAdjacentHTML('afterend', `
-            <div id="container-graficos-dinamicos">
-                <div style="background: var(--bg-container); padding: 20px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 12px var(--shadow-color); border: 1px solid var(--border-color);">
-                    <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="target" style="color:#0086ff;"></i> Meta Geral vs Realizado</h4>
-                    <div style="width: 100%; overflow-x: auto; overflow-y: hidden;"><div id="wrap-graficoMetaGeral" style="position: relative; height: 350px;"><canvas id="graficoMetaGeral"></canvas></div></div>
+    // INSERÇÃO SEGURA DO GRÁFICO META GERAL
+    let wrapPrem = document.getElementById('wrap-graficoMetaPremiumCapa');
+    if (wrapPrem && !document.getElementById('card-meta-geral')) {
+        let cardFoco = wrapPrem.closest('div[style*="var(--bg-container)"]');
+        if (cardFoco) {
+            cardFoco.insertAdjacentHTML('beforebegin', `
+            <div id="card-meta-geral" style="background: var(--bg-container); padding: 20px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 12px var(--shadow-color); border: 1px solid var(--border-color);">
+                <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="target" style="color:#0086ff;"></i> Meta Geral vs Realizado</h4>
+                <div style="width: 100%; overflow-x: auto; overflow-y: hidden;">
+                    <div id="wrap-graficoMetaGeral" style="position: relative; height: 350px; min-width: 100%;">
+                        <!-- O CANVAS SERÁ INJETADO AQUI DINAMICAMENTE -->
+                    </div>
                 </div>
-                <div style="background: var(--bg-container); padding: 20px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 12px var(--shadow-color); border: 1px solid var(--border-color);">
-                    <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="star" style="color:#ffc107;"></i> Meta Foco vs Realizado</h4>
-                    <div style="width: 100%; overflow-x: auto; overflow-y: hidden;"><div id="wrap-graficoMetaPremiumCapa" style="position: relative; height: 350px;"><canvas id="graficoMetaPremiumCapa"></canvas></div></div>
-                </div>
-                <div style="background: var(--bg-container); padding: 20px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 12px var(--shadow-color); border: 1px solid var(--border-color);">
-                    <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="percent" style="color:#17a2b8;"></i> Coparticipação Premium (%)</h4>
-                    <div style="width: 100%; overflow-x: auto; overflow-y: hidden;"><div id="wrap-graficoCoparticipacaoPromotores" style="position: relative; height: 350px;"><canvas id="graficoCoparticipacaoPromotores"></canvas></div></div>
-                </div>
-            </div>
-        `);
-        loadIcons();
-        // Esconde os wrappers originais vazios se existirem
-        let wrapsAntigos = document.querySelectorAll('div[id^="wrap-grafico"]:not(#container-graficos-dinamicos div)');
-        wrapsAntigos.forEach(w => w.parentElement.parentElement.style.display = 'none');
+            </div>`);
+            loadIcons();
+        }
     }
 
-    document.getElementById('wrap-graficoMetaGeral').style.minWidth = widthProm + '%';
-    document.getElementById('wrap-graficoMetaPremiumCapa').style.minWidth = widthProm + '%';
-    document.getElementById('wrap-graficoCoparticipacaoPromotores').style.minWidth = widthProm + '%';
+    // AJUSTA LARGURAS
+    let wrapGeral = document.getElementById('wrap-graficoMetaGeral'); if (wrapGeral) wrapGeral.style.minWidth = widthProm + '%';
+    if (wrapPrem) wrapPrem.style.minWidth = widthProm + '%';
+    let wrapCop = document.getElementById('wrap-graficoCoparticipacaoPromotores'); if (wrapCop) wrapCop.style.minWidth = widthProm + '%';
 
     // 1. GRÁFICO: META GERAL
-    const ctxGeral = document.getElementById('graficoMetaGeral').getContext('2d');
-    chartMetaGeral = new Chart(ctxGeral, {
-        type: 'bar', plugins: [pluginDatalabels],
-        data: { 
-            labels: labelsProm, 
-            datasets: [
-                { label: 'Meta Total (un)', data: labelsProm.map(p => Number(Math.round(metricas[p].metaIndividual * 10) / 10) || 0), backgroundColor: '#c0c0c0' }, 
-                { label: 'Realizado Total', data: labelsProm.map(p => Number(metricas[p].realizadoGeral) || 0), backgroundColor: '#0086ff' }
-            ]
-        },
-        options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { position: 'bottom', labels:{color:corTextoGrafico} }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { if (ctx.datasetIndex === 0) return val + ' un'; let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; let pct = m.metaIndividual > 0 ? ((val / m.metaIndividual) * 100).toFixed(1) : 0; return [`${val} un`, `(${pct}%)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { x:{ticks:{color:corTextoGrafico}}, y: { beginAtZero: true, suggestedMax: maxMetaGeral * 1.3, ticks:{color:corTextoGrafico} } } }
-    });
+    let ctxGeral = recriarCanvasSeguro('wrap-graficoMetaGeral', 'graficoMetaGeral');
+    if (ctxGeral) {
+        chartMetaGeral = new Chart(ctxGeral, {
+            type: 'bar', plugins: [pluginDatalabels],
+            data: { 
+                labels: labelsProm, 
+                datasets: [
+                    { label: 'Meta Total (un)', data: labelsProm.map(p => Number(Math.round(metricas[p].metaIndividual * 10) / 10) || 0), backgroundColor: '#c0c0c0' }, 
+                    { label: 'Realizado Total', data: labelsProm.map(p => Number(metricas[p].realizadoGeral) || 0), backgroundColor: '#0086ff' }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { position: 'bottom', labels:{color:corTextoGrafico} }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { if (ctx.datasetIndex === 0) return val + ' un'; let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; let pct = m.metaIndividual > 0 ? ((val / m.metaIndividual) * 100).toFixed(1) : 0; return [`${val} un`, `(${pct}%)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { x:{ticks:{color:corTextoGrafico}}, y: { beginAtZero: true, suggestedMax: maxMetaGeral * 1.3, ticks:{color:corTextoGrafico} } } }
+        });
+    }
 
     // 2. GRÁFICO: META FOCO
-    const ctxCapa = document.getElementById('graficoMetaPremiumCapa').getContext('2d');
-    chartCapa = new Chart(ctxCapa, {
-        type: 'bar', plugins: [pluginDatalabels],
-        data: { 
-            labels: labelsProm, 
-            datasets: [
-                { label: 'Meta Foco (un)', data: labelsProm.map(p => Number(Math.round(metricas[p].metaPremium * 10) / 10) || 0), backgroundColor: '#c0c0c0' }, 
-                { label: 'Realizado Foco', data: labelsProm.map(p => Number(metricas[p].realizadoPremium) || 0), backgroundColor: '#ffc107' }
-            ]
-        },
-        options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { position: 'bottom', labels:{color:corTextoGrafico} }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { if (ctx.datasetIndex === 0) return val + ' un'; let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; let pct = m.metaPremium > 0 ? ((val / m.metaPremium) * 100).toFixed(1) : 0; return [`${val} un`, `(${pct}%)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { x:{ticks:{color:corTextoGrafico}}, y: { beginAtZero: true, suggestedMax: maxMetaFoco * 1.3, ticks:{color:corTextoGrafico} } } }
-    });
+    let ctxCapa = recriarCanvasSeguro('wrap-graficoMetaPremiumCapa', 'graficoMetaPremiumCapa');
+    if (ctxCapa) {
+        chartCapa = new Chart(ctxCapa, {
+            type: 'bar', plugins: [pluginDatalabels],
+            data: { 
+                labels: labelsProm, 
+                datasets: [
+                    { label: 'Meta Foco (un)', data: labelsProm.map(p => Number(Math.round(metricas[p].metaPremium * 10) / 10) || 0), backgroundColor: '#c0c0c0' }, 
+                    { label: 'Realizado Foco', data: labelsProm.map(p => Number(metricas[p].realizadoPremium) || 0), backgroundColor: '#ffc107' }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { position: 'bottom', labels:{color:corTextoGrafico} }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { if (ctx.datasetIndex === 0) return val + ' un'; let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; let pct = m.metaPremium > 0 ? ((val / m.metaPremium) * 100).toFixed(1) : 0; return [`${val} un`, `(${pct}%)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { x:{ticks:{color:corTextoGrafico}}, y: { beginAtZero: true, suggestedMax: maxMetaFoco * 1.3, ticks:{color:corTextoGrafico} } } }
+        });
+    }
 
     // 3. GRÁFICO: COPARTICIPAÇÃO
-    const ctxCopart = document.getElementById('graficoCoparticipacaoPromotores').getContext('2d');
-    chartCoparticipacao = new Chart(ctxCopart, {
-        type: 'bar', plugins: [pluginDatalabels],
-        data: { 
-            labels: labelsProm, 
-            datasets: [
-                { label: '% Coparticipação', data: labelsProm.map(p => metricas[p].realizadoGeral > 0 ? Number(((metricas[p].realizadoPremium / metricas[p].realizadoGeral) * 100).toFixed(1)) : 0), backgroundColor: '#17a2b8' }
-            ] 
-        },
-        options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { display: false }, tooltip: { padding: 12, callbacks: { label: function(context) { let p = context.chart.data.labels[context.dataIndex]; let m = metricas[p]; let linhas = [`Coparticipação: ${context.raw}% (${m.realizadoPremium} de ${m.realizadoGeral} un)`]; if (m.realizadoPremium > 0) { linhas.push('-------------------------'); linhas.push('Aparelhos Foco Vendidos:'); for (let mod in m.modelosPremiumVendidos) { linhas.push(`• ${m.modelosPremiumVendidos[mod]}x ${mod}`); } } else { linhas.push('-------------------------'); linhas.push('Nenhum aparelho foco vendido.'); } return linhas; } } }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; return [`${val}%`, `(${m.realizadoPremium} de ${m.realizadoGeral} un)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { x:{ticks:{color:corTextoGrafico}}, y: { beginAtZero: true, suggestedMax: 100, ticks:{color:corTextoGrafico} } } }
-    });
+    let ctxCopart = recriarCanvasSeguro('wrap-graficoCoparticipacaoPromotores', 'graficoCoparticipacaoPromotores');
+    if (ctxCopart) {
+        chartCoparticipacao = new Chart(ctxCopart, {
+            type: 'bar', plugins: [pluginDatalabels],
+            data: { 
+                labels: labelsProm, 
+                datasets: [
+                    { label: '% Coparticipação', data: labelsProm.map(p => metricas[p].realizadoGeral > 0 ? Number(((metricas[p].realizadoPremium / metricas[p].realizadoGeral) * 100).toFixed(1)) : 0), backgroundColor: '#17a2b8' }
+                ] 
+            },
+            options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { display: false }, tooltip: { padding: 12, callbacks: { label: function(context) { let p = context.chart.data.labels[context.dataIndex]; let m = metricas[p]; let linhas = [`Coparticipação: ${context.raw}% (${m.realizadoPremium} de ${m.realizadoGeral} un)`]; if (m.realizadoPremium > 0) { linhas.push('-------------------------'); linhas.push('Aparelhos Foco Vendidos:'); for (let mod in m.modelosPremiumVendidos) { linhas.push(`• ${m.modelosPremiumVendidos[mod]}x ${mod}`); } } else { linhas.push('-------------------------'); linhas.push('Nenhum aparelho foco vendido.'); } return linhas; } } }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; return [`${val}%`, `(${m.realizadoPremium} de ${m.realizadoGeral} un)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { x:{ticks:{color:corTextoGrafico}}, y: { beginAtZero: true, suggestedMax: 100, ticks:{color:corTextoGrafico} } } }
+        });
+    }
 
     // 4. GRÁFICO DE LOJAS
     let lojasSort = Object.keys(vendasPorLoja).sort((a,b) => a.localeCompare(b, undefined, {numeric:true, sensitivity:'base'}));
@@ -1330,23 +1342,24 @@ function gerarGraficosDash(dadosVendas) {
     let wrapLojas = document.getElementById('wrap-graficoVendasLoja');
     if(wrapLojas) wrapLojas.style.minWidth = Math.max(100, lojasSort.length * 18) + '%';
 
-    let elLojasCanvas = document.getElementById('graficoVendasLoja');
-    if (elLojasCanvas) {
-        const ctxLojas = elLojasCanvas.getContext('2d');
+    let ctxLojas = recriarCanvasSeguro('wrap-graficoVendasLoja', 'graficoVendasLoja');
+    if (ctxLojas) {
         chartLojas = new Chart(ctxLojas, { type: 'bar', plugins: [pluginDatalabels], data: { labels: lojasSort, datasets: [{ data: lojasSort.map(l => Number(vendasPorLoja[l]) || 0), backgroundColor: '#28a745', borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 20 } }, scales: { x: { ticks: { display: false }, grid: { display: false } }, y: { beginAtZero: true } }, plugins: { legend: { display: false }, tooltip: { padding: 12, callbacks: { title: function(context) { return '🏪 ' + context[0].label; }, afterTitle: function(context) { return '👤 Promotor: ' + getPromotorDaLoja(context[0].label); }, label: function(context) { return 'Total Vendido: ' + context.raw + ' un'; } } }, datalabels: { anchor: 'end', align: 'top', color: corTextoGrafico, font: { weight: 'bold' }, formatter: (val) => val + ' un' } } } });
     }
 
     // 5. GRÁFICO PIZZA (TOP MODELOS)
     let topModelos = Object.entries(vendasPorModelo).sort((a, b) => b[1] - a[1]).slice(0, 5);
     if (topModelos.length === 0) topModelos = [["Nenhum", 1]];
-    let elModelosCanvas = document.getElementById('graficoTopModelos');
-    if (elModelosCanvas) {
-        const ctxModelos = elModelosCanvas.getContext('2d');
-        chartModelos = new Chart(ctxModelos, { type: 'doughnut', plugins: [pluginDatalabels], data: { labels: topModelos.map(m => `${m[0]}`), datasets: [{ data: topModelos.map(m => m[1]), backgroundColor: ['#0086ff', '#28a745', '#ffc107', '#dc3545', '#6f42c1'] }] }, options: { maintainAspectRatio: false, responsive: true, plugins: { legend: { position: 'bottom', labels: { color: corTextoGrafico } }, datalabels: { color: '#fff', font: { weight: 'bold', size: 12 }, formatter: (value) => value > 0 && topModelos[0][0] !== "Nenhum" ? value + ' un' : '' } } } });
+    
+    let ctxModelos = recriarCanvasSeguro('graficoTopModelos', 'graficoTopModelos-canvas'); 
+    // O html original diz: <canvas id="graficoTopModelos"></canvas>. Vamos reescrever seguro.
+    let wrapTopModelos = document.getElementById('graficoTopModelos')?.parentElement;
+    if (wrapTopModelos) {
+        wrapTopModelos.innerHTML = '<canvas id="graficoTopModelos"></canvas>';
+        let ctxMod = document.getElementById('graficoTopModelos').getContext('2d');
+        chartModelos = new Chart(ctxMod, { type: 'doughnut', plugins: [pluginDatalabels], data: { labels: topModelos.map(m => `${m[0]}`), datasets: [{ data: topModelos.map(m => m[1]), backgroundColor: ['#0086ff', '#28a745', '#ffc107', '#dc3545', '#6f42c1'] }] }, options: { maintainAspectRatio: false, responsive: true, plugins: { legend: { position: 'bottom', labels: { color: corTextoGrafico } }, datalabels: { color: '#fff', font: { weight: 'bold', size: 12 }, formatter: (value) => value > 0 && topModelos[0][0] !== "Nenhum" ? value + ' un' : '' } } } });
     }
 }
-
-// ================= MODAIS ADMIN E CADASTROS =================
 
 function abrirAdmin() { 
     mudarTela('tela-admin'); 
@@ -1368,6 +1381,11 @@ function abrirAdmin() {
     if (usuarioLogado.cargo === "regional") { document.getElementById('container-admin-regiao').style.display = 'none'; }
     
     renderizarAdminUsuarios(); renderizarInputsFoco(); renderizarAdminAparelhos(); 
+}
+
+function obterRegioesUnicas() {
+    let regioes = Object.values(bancoUsuarios).map(u => u.regiao).filter(r => r && r.trim() !== "");
+    return [...new Set(regioes)].sort();
 }
 
 function renderizarAdminUsuarios() {
