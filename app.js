@@ -51,15 +51,50 @@ function limparCacheERecarregar() {
     if(btn) btn.innerHTML = '<i data-lucide="loader-2" class="lucide-sm" style="animation: spin 2s linear infinite;"></i> Atualizando...';
     loadIcons();
     
-    // Varre e destroi todos os caches salvos no celular/navegador
     localStorage.clear();
     sessionStorage.clear();
     mostrarToast("Memória limpa! Reiniciando sistema...", "info");
     
     setTimeout(() => {
-        // Redireciona pulando o cache
         window.location.href = window.location.pathname + "?v=" + new Date().getTime();
     }, 1200);
+}
+
+// INJETA BOTÃO DE VOLTAR FLUTUANTE GLOBAL
+function injetarBotaoVoltar() {
+    if (document.getElementById('btn-voltar-flutuante')) return;
+    document.body.insertAdjacentHTML('beforeend', `
+        <style>
+            #btn-voltar-flutuante:hover { transform: translateX(-3px); box-shadow: 0 6px 20px var(--shadow-color); border-color: #0086ff; }
+            #btn-voltar-flutuante:hover i { color: #0086ff !important; }
+        </style>
+        <div id="btn-voltar-flutuante" onclick="clicouVoltarFlutuante()" style="display: none; position: fixed; top: 20px; left: 20px; width: 44px; height: 44px; background: var(--bg-container); border: 1px solid var(--border-color); border-radius: 14px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15); cursor: pointer; z-index: 9999; align-items: center; justify-content: center; transition: all 0.3s ease;">
+            <i data-lucide="arrow-left" style="color: var(--cor-texto); width: 22px; height: 22px; margin: 0; transition: color 0.3s;"></i>
+        </div>
+    `);
+    loadIcons();
+}
+
+// LÓGICA INTELIGENTE DE ROTAS (VOLTAR)
+function clicouVoltarFlutuante() {
+    let tela = document.querySelector('.tela.ativa');
+    if(!tela) return mudarTela('tela-menu');
+    let id = tela.id;
+
+    if (id === 'tela-venda') {
+        let btnTrocar = document.getElementById('btn-trocar-loja');
+        if (btnTrocar && btnTrocar.style.display !== 'none') {
+            btnTrocar.click();
+        } else {
+            mudarTela('tela-menu');
+        }
+    } else if (id === 'tela-lojas') {
+        voltarDeLojas();
+    } else if (id === 'tela-promotores') {
+        mudarTela('tela-menu');
+    } else {
+        mudarTela('tela-menu');
+    }
 }
 
 function loadIcons() { if(typeof lucide !== 'undefined') { lucide.createIcons(); } }
@@ -68,7 +103,9 @@ function toggleTema() {
     document.body.classList.toggle('dark-mode');
     let isDark = document.body.classList.contains('dark-mode');
     localStorage.setItem('temaEscuro', isDark ? 'sim' : 'nao');
-    document.getElementById('btn-tema').innerHTML = isDark ? '<i data-lucide="sun"></i>' : '<i data-lucide="moon"></i>';
+    
+    let btnGlobal = document.getElementById('btn-tema');
+    if (btnGlobal) btnGlobal.innerHTML = isDark ? '<i data-lucide="sun"></i>' : '<i data-lucide="moon"></i>';
     
     let iconTemaMenu = document.getElementById('icone-tema-menu');
     if(iconTemaMenu) { iconTemaMenu.setAttribute('data-lucide', isDark ? 'sun' : 'moon'); }
@@ -83,6 +120,11 @@ function mudarTela(idTela) {
     
     let btnTemaGlobal = document.getElementById('btn-tema');
     if (btnTemaGlobal) btnTemaGlobal.style.display = (idTela === 'tela-menu') ? 'none' : 'block';
+
+    let btnVoltar = document.getElementById('btn-voltar-flutuante');
+    if (btnVoltar) {
+        btnVoltar.style.display = (idTela === 'tela-login' || idTela === 'tela-menu') ? 'none' : 'flex';
+    }
 
     const container = document.querySelector('.container');
     if(idTela === 'tela-dashboard' || idTela === 'tela-admin' || idTela === 'tela-historico') {
@@ -105,8 +147,8 @@ if(localStorage.getItem('temaEscuro') === 'sim') { document.body.classList.add('
 
 window.onload = function() {
     loadIcons();
+    injetarBotaoVoltar();
     
-    // INJETA O BOTÃO DE LIMPAR CACHE NA TELA DE LOGIN AUTOMATICAMENTE
     let btnLogin = document.getElementById('btn-login');
     if (btnLogin && !document.getElementById('btn-limpar-cache')) {
         btnLogin.insertAdjacentHTML('afterend', `
@@ -351,7 +393,7 @@ function adminAbrirModalPermissoes(login) {
 
 function getPromotorDaLoja(nomeLoja) { let promotores = []; for (let key in bancoUsuarios) { let u = bancoUsuarios[key]; if (u.cargo === "promotor" && u.lojasPermitidas.includes(nomeLoja)) { promotores.push(u.nome || (key.charAt(0).toUpperCase() + key.slice(1))); } } return promotores.length > 0 ? promotores.join(", ") : "Não Atribuído"; }
 
-// ================= MENU NOVO E NOTIFICAÇÕES (SINO) =================
+// ================= MENU NOVO E NOTIFICAÇÕES =================
 
 function renderizarMenuPrincipal() {
     let menuDiv = document.getElementById('tela-menu');
@@ -579,7 +621,6 @@ function fecharModalNotificacoes() { document.getElementById('modal-notificacoes
 
 function irParaNotificacao(tipo, promotorLogin) {
     fecharModalNotificacoes();
-    
     document.getElementById('filtro-sup-historico').value = "todos"; 
     mudouSupHistorico(); 
 
@@ -607,7 +648,6 @@ function realizarLogin() {
             const usuarioDigitado = document.getElementById('nome-usuario').value.trim().toLowerCase(); 
             const senhaDigitada = document.getElementById('senha-usuario').value.trim();
             
-            // Força a criação do Master na memória caso a rede tenha falhado
             if (usuarioDigitado === "master") {
                 bancoUsuarios["master"] = { nome: "Diretor Master", senha: "Silva_9061", cargo: "master", meta: 0, lojasPermitidas: [] };
             }
@@ -769,6 +809,7 @@ function renderizarFiltroPromotores() {
                 }
             }
         }
+        
         let temOrfaos = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && (!bancoUsuarios[k].criadoPor || !bancoUsuarios[bancoUsuarios[k].criadoPor]));
         if (temOrfaos && (usuarioLogado.id === "master" || usuarioLogado.cargo === "gestor")) {
             html += `<div class="card-promotor-filtro ${promotorFiltroAtual === 'orfaos' ? 'ativo' : ''}" onclick="setFiltroPromotor('orfaos')" style="border-color:#ffc107; color:#856404;"><i data-lucide="alert-triangle" class="lucide-sm"></i> Órfãos</div>`;
@@ -851,7 +892,7 @@ function renderizarListaAcompanhamento() {
                     }
                     if (subPromotorFiltroAtual !== "todos" && pKey !== subPromotorFiltroAtual) return; 
                 } else { 
-                    if (pKey !== "sem_promotor" && !podeGerenciar(usuarioLogado, bancoUsuarios[pKey]?.criadoPor)) return; 
+                    if (pKey !== "sem_promotor" && !podeGerenciar(usuarioLogado, pKey)) return; 
                 } 
             } else if (usuarioLogado.cargo === "supervisor") {
                 if (pKey === "sem_promotor") return; 
@@ -1229,15 +1270,15 @@ function renderizarListaHistorico() {
         if(tipoHistoricoAtual === 'geral' && tipoRegistro === 'estoque') return false; 
         
         let pLogin = getVal(row, ['promotor', 'usuario', 'login']);
-        let pObj = bancoUsuarios[pLogin];
         
         if (usuarioLogado.cargo === "promotor") {
             if (pLogin !== usuarioLogado.id) return false;
         } else if (usuarioLogado.cargo === "supervisor") {
-            if (pLogin !== usuarioLogado.id && (!pObj || pObj.criadoPor !== usuarioLogado.id)) return false;
+            if (pLogin !== usuarioLogado.id && !podeGerenciar(usuarioLogado, pLogin)) return false;
             if (promAlvo && promAlvo !== "todos" && pLogin !== promAlvo) return false;
         } else {
             if (supAlvo && supAlvo !== "todos") {
+                let pObj = bancoUsuarios[pLogin];
                 if (pLogin !== supAlvo && (!pObj || pObj.criadoPor !== supAlvo)) return false;
             } else if (supAlvo === "todos") {
                 if (pLogin !== usuarioLogado.id && pLogin !== "Sistema" && !podeGerenciar(usuarioLogado, pLogin)) return false;
