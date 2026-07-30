@@ -199,7 +199,7 @@ window.onload = function() {
 
 function podeGerenciar(logado, alvoId) {
     if (!logado || !alvoId) return false;
-    if (logado.id === "master" || logado.cargo === "master" || logado.cargo === "gestor") return true;
+    if (logado.id === "master" || logado.cargo === "master" || logado.cargo === "gestor" || logado.id === alvoId) return true;
     
     let alvo = bancoUsuarios[alvoId]; 
     if (!alvo) return false;
@@ -703,6 +703,10 @@ function fazerLogout() {
     usuarioLogado = null; 
     let btnTemaGlobal = document.getElementById('btn-tema');
     if (btnTemaGlobal) btnTemaGlobal.style.display = 'block';
+    
+    let btnVoltar = document.getElementById('btn-voltar-flutuante');
+    if(btnVoltar) btnVoltar.style.display = 'none';
+    
     mudarTela('tela-login'); 
 }
 
@@ -1500,15 +1504,19 @@ function gerarGraficos(dadosVendas) {
         if (document.getElementById('container-filtro-promotor-dash').style.display !== "none") { promotorFoco = document.getElementById('filtro-promotor-dash').value || "todos"; }
     }
 
-    let agrupamento = (usuarioLogado.cargo === "promotor" || promotorFoco !== "todos") ? "promotor" : "supervisor";
-    let visualizarVendedores = (promotorFoco !== "todos"); 
+    // CORREÇÃO: Força o agrupamento por promotor sempre que um supervisor específico for selecionado (ou se for ele mesmo)
+    let agrupamento = "supervisor";
+    if (usuarioLogado.cargo === "promotor" || promotorFoco !== "todos" || (supervisorFoco !== "todos" && supervisorFoco !== "orfaos")) {
+        agrupamento = "promotor";
+    }
 
     if (agrupamento === "supervisor") { 
         for (let k in bancoUsuarios) { 
-            let isSupervisor = (bancoUsuarios[k].cargo === "supervisor" || bancoUsuarios[k].cargo === "gestor" || bancoUsuarios[k].cargo === "regional" || k === "master");
+            let u = bancoUsuarios[k];
+            let isSupervisor = (u.cargo === "supervisor" || u.cargo === "gestor" || u.cargo === "regional" || k === "master");
             if (isSupervisor) { 
                 if(podeGerenciar(usuarioLogado, k)) { 
-                    let nomeSup = bancoUsuarios[k].nome || k; 
+                    let nomeSup = u.nome || k; 
                     metricas[nomeSup] = { login: k, nome: nomeSup, metaPremium: 0, metaIndividual: 0, realizadoPremium: 0, realizadoGeral: 0, modelosPremiumVendidos: {}, modelosVendidosGeral: {}, comissaoAcumulada: 0 }; 
                 } 
             } 
@@ -1516,21 +1524,16 @@ function gerarGraficos(dadosVendas) {
         metricas["Órfãos"] = { login: "orfaos", nome: "Órfãos", metaPremium: 0, metaIndividual: 0, realizadoPremium: 0, realizadoGeral: 0, modelosPremiumVendidos: {}, modelosVendidosGeral: {}, comissaoAcumulada: 0 };
         
         for (let k in bancoUsuarios) {
-            if (bancoUsuarios[k].cargo === "promotor") {
-                let supDoPromotor = bancoUsuarios[k].criadoPor;
+            let u = bancoUsuarios[k];
+            if (u.cargo === "promotor" && podeGerenciar(usuarioLogado, k)) {
+                let supDoPromotor = u.criadoPor;
                 let isOrfao = (!supDoPromotor || !bancoUsuarios[supDoPromotor]);
                 
-                if (supervisorFoco !== "todos") {
-                    if (supervisorFoco === "orfaos" && !isOrfao) continue;
-                    if (supervisorFoco !== "orfaos" && supDoPromotor !== supervisorFoco) continue;
-                }
-                
-                let supKey = supDoPromotor || "geral";
-                if (isOrfao) supKey = "orfaos";
+                let supKey = isOrfao ? "orfaos" : supDoPromotor;
                 let nomeSup = isOrfao ? "Órfãos" : (bancoUsuarios[supKey]?.nome || supKey);
                 
-                let taxaSup = taxasCoparticipacao[supKey] || taxasCoparticipacao["geral"] || 25;
-                let metaIndPromotor = bancoUsuarios[k].meta || 0;
+                let taxaSup = taxasCoparticipacao[supKey === "orfaos" ? "geral" : supKey] || taxasCoparticipacao["geral"] || 25;
+                let metaIndPromotor = Number(u.meta) || 0;
                 
                 if(metricas[nomeSup]) { 
                     metricas[nomeSup].metaPremium += (metaIndPromotor * (taxaSup / 100)); 
@@ -1540,8 +1543,9 @@ function gerarGraficos(dadosVendas) {
         }
     } else {
         for (let k in bancoUsuarios) {
-            if (bancoUsuarios[k].cargo === "promotor") {
-                let supDoPromotor = bancoUsuarios[k].criadoPor;
+            let u = bancoUsuarios[k];
+            if (u.cargo === "promotor" && podeGerenciar(usuarioLogado, k)) {
+                let supDoPromotor = u.criadoPor;
                 let isOrfao = (!supDoPromotor || !bancoUsuarios[supDoPromotor]);
 
                 if (supervisorFoco !== "todos") {
@@ -1549,16 +1553,17 @@ function gerarGraficos(dadosVendas) {
                     if (supervisorFoco !== "orfaos" && supDoPromotor !== supervisorFoco) continue;
                 }
                 if (promotorFoco !== "todos" && k !== promotorFoco) continue;
-                if (usuarioLogado.cargo !== "promotor" && !podeGerenciar(usuarioLogado, k)) continue;
 
-                let pNome = bancoUsuarios[k].nome || k;
+                let pNome = u.nome || k;
                 let supKey = isOrfao ? "geral" : supDoPromotor;
                 let taxaSup = taxasCoparticipacao[supKey] || taxasCoparticipacao["geral"] || 25;
+                let metaInd = Number(u.meta) || 0;
+                
                 metricas[pNome] = { 
                     login: k, 
                     nome: pNome, 
-                    metaPremium: (bancoUsuarios[k].meta || 0) * (taxaSup / 100), 
-                    metaIndividual: bancoUsuarios[k].meta || 0, 
+                    metaPremium: metaInd * (taxaSup / 100), 
+                    metaIndividual: metaInd, 
                     realizadoPremium: 0, 
                     realizadoGeral: 0, 
                     modelosPremiumVendidos: {}, 
@@ -1580,7 +1585,7 @@ function gerarGraficos(dadosVendas) {
         let qtd = lista.length; 
         if (qtd === 0) return;
         
-        let pertenceAoEscopo = false; let promotoresImpactados = new Set(); let supervisoresImpactados = new Set();
+        let pertenceAoEscopo = false; let promotoresImpactados = new Set();
 
         if (loja !== "Outras") {
             for (let k in bancoUsuarios) {
@@ -1590,7 +1595,7 @@ function gerarGraficos(dadosVendas) {
                     let passaFiltroSup = (supervisorFoco === "todos" || (supervisorFoco === "orfaos" && isOrfao) || u.criadoPor === supervisorFoco);
                     let passaFiltroProm = (promotorFoco === "todos" || k === promotorFoco);
                     if (passaFiltroSup && passaFiltroProm && (podeGerenciar(usuarioLogado, k) || k === usuarioLogado.id)) {
-                        pertenceAoEscopo = true; promotoresImpactados.add(k); if(u.criadoPor) supervisoresImpactados.add(u.criadoPor); 
+                        pertenceAoEscopo = true; promotoresImpactados.add(k);
                     }
                 }
             }
@@ -1602,7 +1607,7 @@ function gerarGraficos(dadosVendas) {
                     let passaFiltroSup = (supervisorFoco === "todos" || (supervisorFoco === "orfaos" && isOrfao) || u.criadoPor === supervisorFoco);
                     let passaFiltroProm = (promotorFoco === "todos" || k === promotorFoco);
                     if (passaFiltroSup && passaFiltroProm && (podeGerenciar(usuarioLogado, k) || k === usuarioLogado.id)) {
-                        pertenceAoEscopo = true; promotoresImpactados.add(k); if(u.criadoPor) supervisoresImpactados.add(u.criadoPor); 
+                        pertenceAoEscopo = true; promotoresImpactados.add(k);
                     }
                 }
             }
@@ -1780,7 +1785,15 @@ function gerarGraficos(dadosVendas) {
     if (chartCoparticipacao) chartCoparticipacao.destroy(); if (chartCapa) chartCapa.destroy(); if (chartLojas) chartLojas.destroy(); if (chartModelos) chartModelos.destroy();
     
     let corTextoGrafico = document.body.classList.contains('dark-mode') ? '#e0e0e0' : '#666'; Chart.defaults.color = corTextoGrafico;
-    const pluginDatalabels = ChartDataLabels; let labelsProm = Object.keys(metricas);
+    const pluginDatalabels = ChartDataLabels; 
+    
+    // BLINDAGEM DE GRÁFICO ZERADO: Garante que haja pelo menos uma barra genérica para o ChartJS não bugar.
+    let labelsProm = Object.keys(metricas);
+    if (labelsProm.length === 0) {
+        labelsProm = ["Nenhum Dado"];
+        metricas["Nenhum Dado"] = { metaPremium: 0, realizadoPremium: 0, realizadoGeral: 0 };
+    }
+
     let maxMeta = Math.max(...labelsProm.map(p => metricas[p].metaPremium)) || 10;
 
     let widthProm = Math.max(100, labelsProm.length * 18); 
@@ -1790,26 +1803,39 @@ function gerarGraficos(dadosVendas) {
     const ctxCapa = document.getElementById('graficoMetaPremiumCapa').getContext('2d');
     chartCapa = new Chart(ctxCapa, {
         type: 'bar', plugins: [pluginDatalabels],
-        data: { labels: labelsProm, datasets: [{ label: 'Meta Foco (un)', data: labelsProm.map(p => Math.round(metricas[p].metaPremium * 10) / 10), backgroundColor: '#c0c0c0' }, { label: 'Realizado Foco', data: labelsProm.map(p => metricas[p].realizadoPremium), backgroundColor: '#ffc107' }]},
+        data: { 
+            labels: labelsProm, 
+            datasets: [
+                { label: 'Meta Foco (un)', data: labelsProm.map(p => Number(Math.round(metricas[p].metaPremium * 10) / 10) || 0), backgroundColor: '#c0c0c0' }, 
+                { label: 'Realizado Foco', data: labelsProm.map(p => Number(metricas[p].realizadoPremium) || 0), backgroundColor: '#ffc107' }
+            ]
+        },
         options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { position: 'bottom' }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { if (ctx.datasetIndex === 0) return val + ' un'; let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; let pct = m.metaPremium > 0 ? ((val / m.metaPremium) * 100).toFixed(1) : 0; return [`${val} un`, `(${pct}%)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { y: { beginAtZero: true, suggestedMax: maxMeta * 1.3 } } }
     });
 
     const ctxCopart = document.getElementById('graficoCoparticipacaoPromotores').getContext('2d');
     chartCoparticipacao = new Chart(ctxCopart, {
         type: 'bar', plugins: [pluginDatalabels],
-        data: { labels: labelsProm, datasets: [{ label: '% Coparticipação', data: labelsProm.map(p => metricas[p].realizadoGeral > 0 ? ((metricas[p].realizadoPremium / metricas[p].realizadoGeral) * 100).toFixed(1) : 0), backgroundColor: '#0086ff' }] },
+        data: { 
+            labels: labelsProm, 
+            datasets: [
+                { label: '% Coparticipação', data: labelsProm.map(p => metricas[p].realizadoGeral > 0 ? Number(((metricas[p].realizadoPremium / metricas[p].realizadoGeral) * 100).toFixed(1)) : 0), backgroundColor: '#0086ff' }
+            ] 
+        },
         options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 45 } }, plugins: { legend: { display: false }, tooltip: { padding: 12, callbacks: { label: function(context) { let p = context.chart.data.labels[context.dataIndex]; let m = metricas[p]; let linhas = [`Coparticipação: ${context.raw}% (${m.realizadoPremium} de ${m.realizadoGeral} un)`]; if (m.realizadoPremium > 0) { linhas.push('-------------------------'); linhas.push('Aparelhos Foco Vendidos:'); for (let mod in m.modelosPremiumVendidos) { linhas.push(`• ${m.modelosPremiumVendidos[mod]}x ${mod}`); } } else { linhas.push('-------------------------'); linhas.push('Nenhum aparelho foco vendido.'); } return linhas; } } }, datalabels: { anchor: 'end', align: 'top', offset: 4, formatter: (val, ctx) => { let p = ctx.chart.data.labels[ctx.dataIndex]; let m = metricas[p]; return [`${val}%`, `(${m.realizadoPremium} de ${m.realizadoGeral} un)`]; }, font: { weight: 'bold', size: 10 }, color: corTextoGrafico, textAlign: 'center' } }, scales: { y: { beginAtZero: true, suggestedMax: 100 } } }
     });
 
     let lojasSort = Object.keys(vendasPorLoja).sort((a,b) => a.localeCompare(b, undefined, {numeric:true, sensitivity:'base'}));
+    if (lojasSort.length === 0) lojasSort = ["Nenhuma Loja"];
     let widthLojas = Math.max(100, lojasSort.length * 18); document.getElementById('wrap-graficoVendasLoja').style.minWidth = widthLojas + '%';
 
     const ctxLojas = document.getElementById('graficoVendasLoja').getContext('2d');
-    chartLojas = new Chart(ctxLojas, { type: 'bar', plugins: [pluginDatalabels], data: { labels: lojasSort, datasets: [{ data: lojasSort.map(l => vendasPorLoja[l]), backgroundColor: '#28a745', borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 20 } }, scales: { x: { ticks: { display: false }, grid: { display: false } }, y: { beginAtZero: true } }, plugins: { legend: { display: false }, tooltip: { padding: 12, callbacks: { title: function(context) { return '🏪 ' + context[0].label; }, afterTitle: function(context) { return '👤 Promotor: ' + getPromotorDaLoja(context[0].label); }, label: function(context) { return 'Total Vendido: ' + context.raw + ' un'; } } }, datalabels: { anchor: 'end', align: 'top', color: corTextoGrafico, font: { weight: 'bold' }, formatter: (val) => val + ' un' } } } });
+    chartLojas = new Chart(ctxLojas, { type: 'bar', plugins: [pluginDatalabels], data: { labels: lojasSort, datasets: [{ data: lojasSort.map(l => Number(vendasPorLoja[l]) || 0), backgroundColor: '#28a745', borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 20 } }, scales: { x: { ticks: { display: false }, grid: { display: false } }, y: { beginAtZero: true } }, plugins: { legend: { display: false }, tooltip: { padding: 12, callbacks: { title: function(context) { return '🏪 ' + context[0].label; }, afterTitle: function(context) { return '👤 Promotor: ' + getPromotorDaLoja(context[0].label); }, label: function(context) { return 'Total Vendido: ' + context.raw + ' un'; } } }, datalabels: { anchor: 'end', align: 'top', color: corTextoGrafico, font: { weight: 'bold' }, formatter: (val) => val + ' un' } } } });
 
     let topModelos = Object.entries(vendasPorModelo).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    if (topModelos.length === 0) topModelos = [["Nenhum", 1]];
     const ctxModelos = document.getElementById('graficoTopModelos').getContext('2d');
-    chartModelos = new Chart(ctxModelos, { type: 'doughnut', plugins: [pluginDatalabels], data: { labels: topModelos.map(m => `${m[0]}`), datasets: [{ data: topModelos.map(m => m[1]), backgroundColor: ['#0086ff', '#28a745', '#ffc107', '#dc3545', '#6f42c1'] }] }, options: { maintainAspectRatio: false, responsive: true, plugins: { legend: { position: 'bottom', labels: { color: corTextoGrafico } }, datalabels: { color: '#fff', font: { weight: 'bold', size: 12 }, formatter: (value) => value > 0 ? value + ' un' : '' } } } });
+    chartModelos = new Chart(ctxModelos, { type: 'doughnut', plugins: [pluginDatalabels], data: { labels: topModelos.map(m => `${m[0]}`), datasets: [{ data: topModelos.map(m => m[1]), backgroundColor: ['#0086ff', '#28a745', '#ffc107', '#dc3545', '#6f42c1'] }] }, options: { maintainAspectRatio: false, responsive: true, plugins: { legend: { position: 'bottom', labels: { color: corTextoGrafico } }, datalabels: { color: '#fff', font: { weight: 'bold', size: 12 }, formatter: (value) => value > 0 && topModelos[0][0] !== "Nenhum" ? value + ' un' : '' } } } });
 }
 
 function abrirAdmin() { 
