@@ -119,30 +119,16 @@ window.onload = function() {
     });
 };
 
-// >>> MODO DEUS: Libera o Master e o Gestor para verem tudo <<<
 function podeGerenciar(logado, alvoId) {
     if (!logado || !alvoId) return false;
     if (logado.id === "master" || logado.cargo === "master" || logado.cargo === "gestor") return true;
-    
-    let alvo = bancoUsuarios[alvoId]; 
-    if (!alvo) return false;
-
+    let alvo = bancoUsuarios[alvoId]; if (!alvo) return false;
     if (logado.cargo === "regional") {
-        if (alvo.cargo === "supervisor") {
-            return (alvo.regiao === logado.regiao) || (alvo.criadoPor === logado.id);
-        }
-        if (alvo.cargo === "promotor") {
-            let supDoPromotor = bancoUsuarios[alvo.criadoPor];
-            if (supDoPromotor && supDoPromotor.regiao === logado.regiao) return true;
-            return alvo.regiao === logado.regiao; 
-        }
+        if (alvo.cargo === "supervisor") return (alvo.regiao === logado.regiao) || (alvo.criadoPor === logado.id);
+        if (alvo.cargo === "promotor") { let supDoPromotor = bancoUsuarios[alvo.criadoPor]; if (supDoPromotor && supDoPromotor.regiao === logado.regiao) return true; return alvo.regiao === logado.regiao; }
         return false;
     }
-    
-    if (logado.cargo === "supervisor") {
-        return alvo.criadoPor === logado.id;
-    }
-
+    if (logado.cargo === "supervisor") return alvo.criadoPor === logado.id;
     return false;
 }
 
@@ -184,13 +170,9 @@ function fecharModalEdicao() { document.getElementById('modal-edicao').classList
 
 function adminAbrirModalRegiao(login) {
     let u = bancoUsuarios[login]; document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="globe"></i> Região - @${login}`;
-    let html = `<label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Nova Região/Estado (Ex: MG, SP):</label>
-                <input type="text" id="input-edicao-regiao" value="${u.regiao || ''}" style="width: 100%; padding: 10px; text-transform: uppercase;">`;
+    let html = `<label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Nova Região/Estado (Ex: MG, SP):</label><input type="text" id="input-edicao-regiao" value="${u.regiao || ''}" style="width: 100%; padding: 10px; text-transform: uppercase;">`;
     document.getElementById('modal-edicao-corpo').innerHTML = html;
-    document.getElementById('btn-salvar-edicao').onclick = function() {
-        let nova = document.getElementById('input-edicao-regiao').value.trim().toUpperCase(); bancoUsuarios[login].regiao = nova; renderizarAdminUsuarios(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Região alterada com sucesso!", "sucesso");
-    };
-    document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
+    document.getElementById('btn-salvar-edicao').onclick = function() { let nova = document.getElementById('input-edicao-regiao').value.trim().toUpperCase(); bancoUsuarios[login].regiao = nova; renderizarAdminUsuarios(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Região alterada com sucesso!", "sucesso"); }; document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
 }
 
 function adminAbrirModalLojas(login) {
@@ -258,6 +240,155 @@ function adminAbrirModalPermissoes(login) {
 
 function getPromotorDaLoja(nomeLoja) { let promotores = []; for (let key in bancoUsuarios) { let u = bancoUsuarios[key]; if (u.cargo === "promotor" && u.lojasPermitidas.includes(nomeLoja)) { promotores.push(u.nome || (key.charAt(0).toUpperCase() + key.slice(1))); } } return promotores.length > 0 ? promotores.join(", ") : "Não Atribuído"; }
 
+// ================= NOTIFICAÇÕES (SINO) EM TEMPO REAL =================
+function inicializarNotificacoes() {
+    let adminRole = (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master" || usuarioLogado.cargo === "supervisor");
+    if (!adminRole) return;
+
+    let telaMenu = document.getElementById('tela-menu');
+    let sinoAntigo = document.getElementById('btn-sino-notificacao');
+    if (sinoAntigo) sinoAntigo.remove();
+
+    let sinoHtml = `
+    <div id="btn-sino-notificacao" onclick="abrirModalNotificacoes()" style="position: absolute; top: 25px; left: 25px; cursor: pointer; z-index: 100; background: var(--bg-container); padding: 10px; border-radius: 50%; border: 1px solid var(--border-color); box-shadow: 0 2px 8px var(--shadow-color); transition: transform 0.2s;">
+        <i data-lucide="bell" style="margin:0; color: var(--cor-texto);"></i>
+        <span id="badge-sino" style="display:none; position:absolute; top:-5px; right:-5px; background:#dc3545; color:white; border-radius:50%; padding:2px 6px; font-size:11px; font-weight:bold; box-shadow: 0 1px 3px rgba(0,0,0,0.5);">0</span>
+    </div>`;
+    telaMenu.insertAdjacentHTML('afterbegin', sinoHtml);
+
+    let modalAntigo = document.getElementById('modal-notificacoes');
+    if (modalAntigo) modalAntigo.remove();
+
+    let modalHtml = `
+    <div id="modal-notificacoes" class="modal-overlay" style="z-index: 2000;">
+        <div class="modal-content" style="max-height: 80vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; background: var(--bg-container);">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid var(--border-color); background: var(--bg-item);">
+                <h3 style="margin:0; font-size: 18px; color: var(--cor-texto);"><i data-lucide="bell-ring" style="color: #0086ff;"></i> Atividades de Hoje</h3>
+                <button onclick="fecharModalNotificacoes()" style="background:none; border:none; color:var(--cor-texto); cursor:pointer;"><i data-lucide="x"></i></button>
+            </div>
+            <div id="lista-notificacoes-conteudo" style="overflow-y: auto; flex: 1; padding: 15px; text-align: left;">
+                <div style="text-align:center; padding: 20px; color: var(--cor-secundaria);"><i data-lucide="loader-2" class="lucide-sm" style="animation: spin 2s linear infinite;"></i> Carregando atividades...</div>
+            </div>
+        </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    loadIcons();
+    carregarNotificacoesSilencioso();
+}
+
+function carregarNotificacoesSilencioso() {
+    fetch(URL_DA_SUA_API + "?acao=historico&limit=150&_t=" + new Date().getTime())
+    .then(r => r.json())
+    .then(res => {
+        if (res.status === "sucesso") {
+            dadosHistoricoGlobal = res.dados || [];
+            processarNotificacoes(dadosHistoricoGlobal);
+        }
+    }).catch(e => console.error("Erro nas notificações:", e));
+}
+
+function processarNotificacoes(dados) {
+    let hojeStr = new Date().toLocaleDateString('pt-BR');
+    let notificacoes = [];
+
+    dados.forEach(row => {
+        let pLogin = getVal(row, ['promotor', 'usuario', 'login']);
+        let pObj = bancoUsuarios[pLogin];
+        
+        if (pLogin === usuarioLogado.id || pLogin === "Sistema") return;
+
+        if (usuarioLogado.cargo === "supervisor") {
+            if (!pObj || pObj.criadoPor !== usuarioLogado.id) return;
+        } else if (usuarioLogado.cargo !== "master" && usuarioLogado.cargo !== "gestor") {
+            if (!podeGerenciar(usuarioLogado, pLogin)) return;
+        }
+
+        let rawData = getVal(row, ['datahora', 'data', 'timestamp', 'carimbo']);
+        let isHoje = false;
+        
+        if (rawData) {
+            let dtStr = rawData.split(" ")[0]; 
+            if (dtStr === hojeStr || dtStr === hojeStr.replace(/\//g, "-")) {
+                isHoje = true;
+            }
+        }
+        
+        if (isHoje) notificacoes.push(row);
+    });
+
+    let badge = document.getElementById('badge-sino');
+    if (badge) {
+        if (notificacoes.length > 0) {
+            badge.innerText = notificacoes.length;
+            badge.style.display = 'flex';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+    
+    let div = document.getElementById('lista-notificacoes-conteudo');
+    if (!div) return;
+    
+    if (notificacoes.length === 0) {
+        div.innerHTML = "<div class='mensagem-vazia'>A sua equipe ainda não registrou atividades hoje.</div>";
+        return;
+    }
+
+    let html = "";
+    notificacoes.forEach(row => {
+        let tipoAcao = getVal(row, ['tipoacao', 'tipo', 'acao', 'ação']);
+        let detalhes = getVal(row, ['detalhes', 'detalhe', 'descrição', 'descricao']);
+        let pLogin = getVal(row, ['promotor', 'usuario', 'login']);
+        let nomePromotor = bancoUsuarios[pLogin] ? bancoUsuarios[pLogin].nome : pLogin;
+        
+        let isEstoque = tipoAcao.toLowerCase().includes('estoque') || tipoAcao.toLowerCase().includes('conferência') || detalhes.toLowerCase().includes('estoque') || detalhes.toLowerCase().includes('conferência');
+        let tipo = isEstoque ? 'estoque' : 'geral';
+        
+        let iconeCor = isEstoque ? '#ff9800' : '#28a745';
+        let iconeNome = isEstoque ? 'package' : 'shopping-bag';
+
+        let resumo = detalhes.split("|")[0].substring(0, 45).trim();
+        if (detalhes.length > 45) resumo += "...";
+
+        html += `
+        <div onclick="irParaNotificacao('${tipo}', '${pLogin}')" onmouseover="this.style.backgroundColor='var(--bg-card)'" onmouseout="this.style.backgroundColor='var(--bg-container)'" style="background: var(--bg-container); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; margin-bottom: 8px; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: background 0.2s;">
+            <div style="background: var(--bg-item); padding: 10px; border-radius: 50%; border: 1px solid var(--border-color); display:flex; align-items:center; justify-content:center;">
+                <i data-lucide="${iconeNome}" style="color:${iconeCor}; width:18px; height:18px; margin:0;"></i>
+            </div>
+            <div style="flex: 1;">
+                <div style="font-size: 13px; font-weight: bold; color: var(--cor-texto); margin-bottom: 2px;">${nomePromotor} <span style="font-weight: normal; color: var(--cor-secundaria); font-size: 11px;">(${tipoAcao})</span></div>
+                <div style="font-size: 12px; color: var(--cor-secundaria);">${resumo}</div>
+            </div>
+            <i data-lucide="chevron-right" style="color: #0086ff; width: 16px; height: 16px; margin:0;"></i>
+        </div>`;
+    });
+    
+    div.innerHTML = html;
+    loadIcons();
+}
+
+function abrirModalNotificacoes() { document.getElementById('modal-notificacoes').classList.add('ativo'); }
+function fecharModalNotificacoes() { document.getElementById('modal-notificacoes').classList.remove('ativo'); }
+
+function irParaNotificacao(tipo, promotorLogin) {
+    fecharModalNotificacoes();
+    
+    document.getElementById('filtro-sup-historico').value = "todos"; 
+    mudouSupHistorico(); 
+
+    setTimeout(() => {
+        document.getElementById('filtro-promotor-historico').value = promotorLogin;
+        
+        let hojeStr = new Date().toISOString().split("T")[0];
+        document.getElementById('filtro-data-inicio-historico').value = hojeStr;
+        document.getElementById('filtro-data-fim-historico').value = hojeStr;
+        
+        abrirHistorico(tipo);
+        aplicarFiltroHistorico(); 
+    }, 150);
+}
+
 // ================= LOGIN E ACESSO =================
 function realizarLogin() {
     const btn = document.getElementById("btn-login"); 
@@ -312,6 +443,7 @@ function entrarNoSistema() {
         document.getElementById('btn-admin').style.display = "block";
         document.getElementById('btn-menu-historico').style.display = "block";
         document.getElementById('btn-menu-auditoria').style.display = "block";
+        inicializarNotificacoes(); // Inicializa o Sino para gestores
     } else {
         document.getElementById('btn-menu-venda').style.display = perm.vendas ? "block" : "none";
         document.getElementById('btn-menu-acomp').style.display = perm.acomp ? "block" : "none";
@@ -319,6 +451,9 @@ function entrarNoSistema() {
         document.getElementById('btn-admin').style.display = "none";
         document.getElementById('btn-menu-historico').style.display = "none";
         document.getElementById('btn-menu-auditoria').style.display = "none";
+        
+        let sino = document.getElementById('btn-sino-notificacao');
+        if (sino) sino.style.display = "none";
     }
 
     verificarConferenciaEstoque();
@@ -327,7 +462,6 @@ function entrarNoSistema() {
 
 function fazerLogout() { usuarioLogado = null; mudarTela('tela-login'); }
 
-// >>> MODO DEUS: O Master e o Gestor agora veem todas as lojas no "Lançar Venda" <<<
 function irParaVendas() {
     if (usuarioLogado.cargo === "master" || usuarioLogado.cargo === "gestor") {
         montarBotoesLojas(Object.keys(lojasConfig)); 
@@ -510,8 +644,6 @@ function renderizarListaAcompanhamento() {
         html += `<div style="margin-bottom: 25px; border-radius: 8px; box-shadow: 0 4px 8px var(--shadow-color); overflow: hidden; text-align: left;"><div style="background: ${pKey === 'sem_promotor' ? '#6c757d' : '#0086ff'}; color: white; padding: 12px 15px; font-weight: bold; display: flex; justify-content: space-between; align-items: center;"><span style="font-size: 15px; display:flex; align-items:center;"><i data-lucide="user"></i> Promotor: ${nomePromotor}</span><span style="background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 20px; font-size: 13px;">Total: ${totalPromotor} un</span></div><div style="background: var(--bg-container); padding: 15px 10px 5px 10px; border: 1px solid var(--border-color); border-top: none; border-radius: 0 0 8px 8px;">${htmlLojas}</div></div>`;
     } div.innerHTML = html; loadIcons();
 }
-
-// ================= FUNÇÕES DO ESTOQUE E MOSTRUÁRIO ================= //
 
 function fecharModalConfirmMostruario() { document.getElementById('modal-confirm-mostruario').classList.remove('ativo'); mostruarioEmEdicao = null; }
 function fecharModalPromptMostruario() { document.getElementById('modal-prompt-mostruario').classList.remove('ativo'); mostruarioEmEdicao = null; }
