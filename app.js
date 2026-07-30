@@ -119,7 +119,7 @@ window.onload = function() {
     });
 };
 
-// >>> CORREÇÃO CRÍTICA 1: HIERARQUIA DE ACESSO PROFUNDA <<<
+// >>> MODO DEUS: Libera o Master e o Gestor para verem tudo <<<
 function podeGerenciar(logado, alvoId) {
     if (!logado || !alvoId) return false;
     if (logado.id === "master" || logado.cargo === "master" || logado.cargo === "gestor") return true;
@@ -133,9 +133,7 @@ function podeGerenciar(logado, alvoId) {
         }
         if (alvo.cargo === "promotor") {
             let supDoPromotor = bancoUsuarios[alvo.criadoPor];
-            // Se o supervisor do promotor for da região do regional, ele pode ver o promotor!
             if (supDoPromotor && supDoPromotor.regiao === logado.regiao) return true;
-            // Fallback (caso a região tenha sido atrelada direto no promotor)
             return alvo.regiao === logado.regiao; 
         }
         return false;
@@ -329,11 +327,26 @@ function entrarNoSistema() {
 
 function fazerLogout() { usuarioLogado = null; mudarTela('tela-login'); }
 
+// >>> MODO DEUS: O Master e o Gestor agora veem todas as lojas no "Lançar Venda" <<<
 function irParaVendas() {
-    if (usuarioLogado.cargo === "supervisor") { let promotoresDele = Object.keys(bancoUsuarios).filter(k => bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === usuarioLogado.id); montarBotoesPromotores(promotoresDele); mudarTela('tela-promotores'); } 
-    else if (usuarioLogado.lojasPermitidas.length === 1) { selecionarLoja(usuarioLogado.lojasPermitidas[0]); } 
-    else { montarBotoesLojas(usuarioLogado.lojasPermitidas); mudarTela('tela-lojas'); }
+    if (usuarioLogado.cargo === "master" || usuarioLogado.cargo === "gestor") {
+        montarBotoesLojas(Object.keys(lojasConfig)); 
+        mudarTela('tela-lojas');
+    }
+    else if (usuarioLogado.cargo === "supervisor") { 
+        let promotoresDele = Object.keys(bancoUsuarios).filter(k => bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === usuarioLogado.id); 
+        montarBotoesPromotores(promotoresDele); 
+        mudarTela('tela-promotores'); 
+    } 
+    else if (usuarioLogado.lojasPermitidas.length === 1) { 
+        selecionarLoja(usuarioLogado.lojasPermitidas[0]); 
+    } 
+    else { 
+        montarBotoesLojas(usuarioLogado.lojasPermitidas); 
+        mudarTela('tela-lojas'); 
+    }
 }
+
 function montarBotoesPromotores(listaChaves) { const div = document.getElementById('botoes-promotores-dinamicos'); div.innerHTML = ""; if (!listaChaves || listaChaves.length === 0) { div.innerHTML = "<div class='mensagem-vazia'>Você não tem promotores na sua equipe.</div>"; return; } listaChaves.forEach(k => { let btn = document.createElement('button'); btn.className = "btn-sistema"; btn.innerHTML = `<i data-lucide="user" class="lucide-sm"></i> Equipe ${bancoUsuarios[k].nome || k}`; btn.onclick = () => selecionarPromotor(bancoUsuarios[k]); div.appendChild(btn); }); loadIcons(); }
 function selecionarPromotor(obj) { if (obj.lojasPermitidas.length === 1) selecionarLoja(obj.lojasPermitidas[0]); else { montarBotoesLojas(obj.lojasPermitidas); mudarTela('tela-lojas'); } }
 function montarBotoesLojas(arr) { const div = document.getElementById('botoes-lojas-dinamicos'); div.innerHTML = ""; let arrOrdenado = arr.sort((a, b) => a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'})); arrOrdenado.forEach(l => { let btn = document.createElement('button'); btn.className = "btn-sistema"; btn.innerHTML = `<i data-lucide="store" class="lucide-sm"></i> ${l}`; btn.onclick = () => selecionarLoja(l); div.appendChild(btn); }); loadIcons(); }
@@ -342,7 +355,16 @@ function voltarDeLojas() { if (usuarioLogado.cargo === "supervisor") mudarTela('
 function selecionarLoja(nomeLoja) {
     lojaAtual = nomeLoja; document.getElementById('titulo-loja-ativa').innerText = lojaAtual; document.getElementById('nome-promotor-ativo').innerText = getPromotorDaLoja(nomeLoja);
     vendedoresSelecionados = []; renderizarVendedoresVenda();
-    const btn = document.getElementById('btn-trocar-loja'); if (usuarioLogado.cargo === "supervisor") { btn.style.display = "block"; btn.innerHTML = '<i data-lucide="refresh-ccw"></i> Trocar Equipe/Loja'; btn.onclick = () => mudarTela('tela-promotores'); } else if (usuarioLogado.lojasPermitidas.length > 1) { btn.style.display = "block"; btn.innerHTML = '<i data-lucide="refresh-ccw"></i> Trocar de Loja'; btn.onclick = () => mudarTela('tela-lojas'); } else { btn.style.display = "none"; }
+    const btn = document.getElementById('btn-trocar-loja'); 
+    
+    if (usuarioLogado.cargo === "supervisor") { 
+        btn.style.display = "block"; btn.innerHTML = '<i data-lucide="refresh-ccw"></i> Trocar Equipe/Loja'; btn.onclick = () => mudarTela('tela-promotores'); 
+    } else if (usuarioLogado.cargo === "master" || usuarioLogado.cargo === "gestor" || usuarioLogado.lojasPermitidas.length > 1) { 
+        btn.style.display = "block"; btn.innerHTML = '<i data-lucide="refresh-ccw"></i> Trocar de Loja'; btn.onclick = () => mudarTela('tela-lojas'); 
+    } else { 
+        btn.style.display = "none"; 
+    }
+    
     carregarCards(); mudarTela('tela-venda'); loadIcons();
 }
 
