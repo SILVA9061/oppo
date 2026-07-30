@@ -170,7 +170,7 @@ function verificarConferenciaEstoque() {
 function filtrarListaLojas(texto, containerId) { texto = texto.toLowerCase(); const labels = document.getElementById(containerId).querySelectorAll('label'); labels.forEach(lbl => { if (lbl.innerText.toLowerCase().includes(texto)) lbl.style.display = 'flex'; else lbl.style.display = 'none'; }); }
 function fecharModalEdicao() { document.getElementById('modal-edicao').classList.remove('ativo'); }
 
-// --- MODAIS DE DEUS: AUTO-SAVE NA NUVEM, PROMOÇÃO DE CARGO E TRANSFERÊNCIA DE EQUIPES ---
+// --- MODAIS COM AUTO-SAVE NA NUVEM ---
 
 function adminAbrirModalCargo(login) {
     let u = bancoUsuarios[login];
@@ -503,7 +503,7 @@ function entrarNoSistema() {
         document.getElementById('btn-admin').style.display = "block";
         document.getElementById('btn-menu-historico').style.display = "block";
         document.getElementById('btn-menu-auditoria').style.display = "block";
-        inicializarNotificacoes(); // Inicializa o Sino para gestores
+        inicializarNotificacoes(); 
     } else {
         document.getElementById('btn-menu-venda').style.display = perm.vendas ? "block" : "none";
         document.getElementById('btn-menu-acomp').style.display = perm.acomp ? "block" : "none";
