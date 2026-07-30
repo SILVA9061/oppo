@@ -119,12 +119,32 @@ window.onload = function() {
     });
 };
 
+// >>> CORREÇÃO CRÍTICA 1: HIERARQUIA DE ACESSO PROFUNDA <<<
 function podeGerenciar(logado, alvoId) {
-    if (logado.id === "master" || logado.cargo === "master") return true;
-    if (logado.cargo === "gestor") return true;
-    let alvo = bancoUsuarios[alvoId]; if(!alvo) return false;
-    if (logado.cargo === "regional") { return alvo.regiao === logado.regiao || alvo.criadoPor === logado.id; }
-    if (logado.cargo === "supervisor") { return alvo.criadoPor === logado.id; }
+    if (!logado || !alvoId) return false;
+    if (logado.id === "master" || logado.cargo === "master" || logado.cargo === "gestor") return true;
+    
+    let alvo = bancoUsuarios[alvoId]; 
+    if (!alvo) return false;
+
+    if (logado.cargo === "regional") {
+        if (alvo.cargo === "supervisor") {
+            return (alvo.regiao === logado.regiao) || (alvo.criadoPor === logado.id);
+        }
+        if (alvo.cargo === "promotor") {
+            let supDoPromotor = bancoUsuarios[alvo.criadoPor];
+            // Se o supervisor do promotor for da região do regional, ele pode ver o promotor!
+            if (supDoPromotor && supDoPromotor.regiao === logado.regiao) return true;
+            // Fallback (caso a região tenha sido atrelada direto no promotor)
+            return alvo.regiao === logado.regiao; 
+        }
+        return false;
+    }
+    
+    if (logado.cargo === "supervisor") {
+        return alvo.criadoPor === logado.id;
+    }
+
     return false;
 }
 
@@ -347,7 +367,7 @@ async function enviarParaBanco() {
     let contagemVenda = {}; emojisPendentes.forEach(item => { let nomeLimpo = item.split("→")[0].trim(); contagemVenda[nomeLimpo] = (contagemVenda[nomeLimpo] || 0) - 1; });
     
     let payloadVenda = { vendedor: `[${lojaAtual}] ${v}`, aparelho: emojisPendentes.join(" || "), promotor: usuarioLogado.id }; 
-    let detalhesVenda = `<strong>Venda Registrada:</strong><br>Loja: ${lojaAtual}<br>Vend: ${v}<br>Qtd: ${emojisPendentes.length} ap.`;
+    let detalhesVenda = `<strong>Venda Registrada:</strong><br>Loja: ${lojaAtual}<br>Vend: ${v}<br>Aparelhos: <span style="color:#0086ff;">${emojisPendentes.join(", ")}</span>`;
 
     if (!navigator.onLine) {
         filaOffline.push({ tipo: "venda", payload: payloadVenda, descricao: detalhesVenda, timestamp: new Date().getTime() });
@@ -917,9 +937,26 @@ let chartCoparticipacao = null; let chartCapa = null; let chartLojas = null; let
 
 function atualizarFiltroPromotorDash() {
     let selSup = document.getElementById('filtro-supervisor-dash').value; let selProm = document.getElementById('filtro-promotor-dash'); let promotorAtual = selProm.value; 
-    let htmlOp = '<option value="todos">Todos da Equipe</option>'; let supAlvo = (usuarioLogado.cargo === "supervisor") ? usuarioLogado.id : selSup;
-    if (supAlvo && supAlvo !== "todos") { for(let k in bancoUsuarios) { if (bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === supAlvo) { htmlOp += `<option value="${k}">${bancoUsuarios[k].nome || k}</option>`; } } }
-    selProm.innerHTML = htmlOp; if (Array.from(selProm.options).some(opt => opt.value === promotorAtual)) { selProm.value = promotorAtual; }
+    
+    let htmlOp = '<option value="todos">Todos da Equipe</option>'; 
+    let supAlvo = (usuarioLogado.cargo === "supervisor") ? usuarioLogado.id : selSup;
+    
+    if (supAlvo && supAlvo !== "todos") { 
+        for(let k in bancoUsuarios) { 
+            if (bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === supAlvo) { 
+                htmlOp += `<option value="${k}">${bancoUsuarios[k].nome || k}</option>`; 
+            } 
+        } 
+    } else if (supAlvo === "todos") {
+        for(let k in bancoUsuarios) { 
+            if (bancoUsuarios[k].cargo === "promotor" && podeGerenciar(usuarioLogado, k)) { 
+                let nomeSup = bancoUsuarios[k].criadoPor ? (bancoUsuarios[bancoUsuarios[k].criadoPor]?.nome || bancoUsuarios[k].criadoPor) : "Sem Equipe";
+                htmlOp += `<option value="${k}">[${nomeSup}] ${bancoUsuarios[k].nome || k}</option>`; 
+            } 
+        }
+    }
+    selProm.innerHTML = htmlOp; 
+    if (Array.from(selProm.options).some(opt => opt.value === promotorAtual)) { selProm.value = promotorAtual; }
 }
 
 function mudouSupervisorDash() { atualizarFiltroPromotorDash(); abrirDashboard(); }
