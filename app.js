@@ -119,10 +119,9 @@ window.onload = function() {
     });
 };
 
-// >>> MODO DEUS 100% <<<
 function podeGerenciar(logado, alvoId) {
     if (!logado || !alvoId) return false;
-    // O Master e o Gestor acessam absolutamente tudo
+    // DEUS: Master e Gestor tem acesso livre a tudo
     if (logado.id === "master" || logado.cargo === "master" || logado.cargo === "gestor") return true;
     
     let alvo = bancoUsuarios[alvoId]; 
@@ -130,11 +129,7 @@ function podeGerenciar(logado, alvoId) {
 
     if (logado.cargo === "regional") {
         if (alvo.cargo === "supervisor") return (alvo.regiao === logado.regiao) || (alvo.criadoPor === logado.id);
-        if (alvo.cargo === "promotor") { 
-            let supDoPromotor = bancoUsuarios[alvo.criadoPor]; 
-            if (supDoPromotor && supDoPromotor.regiao === logado.regiao) return true; 
-            return alvo.regiao === logado.regiao; 
-        }
+        if (alvo.cargo === "promotor") { let supDoPromotor = bancoUsuarios[alvo.criadoPor]; if (supDoPromotor && supDoPromotor.regiao === logado.regiao) return true; return alvo.regiao === logado.regiao; }
         return false;
     }
     if (logado.cargo === "supervisor") return alvo.criadoPor === logado.id;
@@ -175,7 +170,12 @@ function verificarConferenciaEstoque() {
 function filtrarListaLojas(texto, containerId) { texto = texto.toLowerCase(); const labels = document.getElementById(containerId).querySelectorAll('label'); labels.forEach(lbl => { if (lbl.innerText.toLowerCase().includes(texto)) lbl.style.display = 'flex'; else lbl.style.display = 'none'; }); }
 function fecharModalEdicao() { document.getElementById('modal-edicao').classList.remove('ativo'); }
 
-// --- MODAIS COM AUTO-SAVE NA NUVEM ---
+// ================= MODAIS ADMIN (SISTEMA DEUS E CADASTROS) =================
+
+function obterRegioesUnicas() {
+    let regioes = Object.values(bancoUsuarios).map(u => u.regiao).filter(r => r && r.trim() !== "");
+    return [...new Set(regioes)].sort();
+}
 
 function adminAbrirModalCargo(login) {
     let u = bancoUsuarios[login];
@@ -224,8 +224,10 @@ function adminAbrirModalTransferir(login) {
 
 function adminAbrirModalRegiao(login) {
     let u = bancoUsuarios[login]; document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="globe"></i> Região - @${login}`;
-    let html = `<label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Nova Região/Estado (Ex: MG, SP):</label>
-                <input type="text" id="input-edicao-regiao" value="${u.regiao || ''}" style="width: 100%; padding: 10px; text-transform: uppercase;">`;
+    let datalistHtml = `<datalist id="lista-regioes">${obterRegioesUnicas().map(r => `<option value="${r}">`).join('')}</datalist>`;
+    let html = `${datalistHtml}
+                <label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Região (Escolha ou Digite nova):</label>
+                <input type="text" id="input-edicao-regiao" list="lista-regioes" value="${u.regiao || ''}" style="width: 100%; padding: 10px; text-transform: uppercase;">`;
     document.getElementById('modal-edicao-corpo').innerHTML = html;
     document.getElementById('btn-salvar-edicao').onclick = function() {
         let nova = document.getElementById('input-edicao-regiao').value.trim().toUpperCase(); bancoUsuarios[login].regiao = nova; renderizarAdminUsuarios(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Região alterada com sucesso!", "sucesso");
@@ -237,7 +239,6 @@ function adminAbrirModalLojas(login) {
     let u = bancoUsuarios[login]; document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="store"></i> Lojas - ${u.nome || login}`;
     let html = `<input type="text" class="input-busca-loja" placeholder="Pesquisar loja..." onkeyup="filtrarListaLojas(this.value, 'edicao-lojas-container')" style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--cor-texto);"><div id="edicao-lojas-container" style="max-height: 180px; overflow-y: auto; text-align: left;">`;
     
-    // MODO DEUS: O Master/Gestor vê todas as lojas da empresa para consertar lojas sem promotor
     let lojasOrdenadas = [];
     if (usuarioLogado.id === "master" || usuarioLogado.cargo === "gestor") {
         lojasOrdenadas = Object.keys(lojasConfig).sort((a,b) => a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'}));
@@ -277,13 +278,6 @@ function adminAbrirModalCapa(loja) {
     let html = `<label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Capa da loja ${loja}:</label><input type="number" id="input-edicao-capa" value="${lojasConfig[loja].capa || 0}" style="width: 100%; padding: 10px;">`;
     document.getElementById('modal-edicao-corpo').innerHTML = html;
     document.getElementById('btn-salvar-edicao').onclick = function() { let val = parseInt(document.getElementById('input-edicao-capa').value); lojasConfig[loja].capa = isNaN(val) ? 0 : val; renderizarModalEquipe(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Capa atualizada com sucesso!", "sucesso"); }; document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
-}
-
-function adminAbrirModalVendedor(loja, vendedorAtual) {
-    document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="user-edit"></i> Editar Vendedor`;
-    let html = `<label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Nome na loja ${loja}:</label><input type="text" id="input-edicao-vendedor" value="${vendedorAtual}" style="width: 100%; padding: 10px;">`;
-    document.getElementById('modal-edicao-corpo').innerHTML = html;
-    document.getElementById('btn-salvar-edicao').onclick = function() { let novoNome = document.getElementById('input-edicao-vendedor').value.trim(); if(novoNome !== "") { let index = lojasConfig[loja].vendedores.indexOf(vendedorAtual); if (index !== -1) { lojasConfig[loja].vendedores[index] = novoNome; renderizarModalEquipe(); } } fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Vendedor editado com sucesso!", "sucesso"); }; document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
 }
 
 function adminAbrirModalPermissoes(login) {
@@ -1656,10 +1650,14 @@ function abrirAdmin() {
     renderizarAdminUsuarios(); renderizarInputsFoco(); renderizarAdminAparelhos(); 
 }
 
+function obterRegioesUnicas() {
+    let regioes = Object.values(bancoUsuarios).map(u => u.regiao).filter(r => r && r.trim() !== "");
+    return [...new Set(regioes)].sort();
+}
+
 function renderizarAdminUsuarios() {
     const div = document.getElementById('lista-admin-supervisores'); let htmlContent = "";
     
-    // MODO DEUS: O Master vê a própria equipe e os Órfãos soltos pelo sistema
     if (usuarioLogado.id === "master" || usuarioLogado.cargo === "gestor") {
         htmlContent += `
         <div class="linha-admin" style="flex-direction: column; align-items: stretch; padding: 12px; background: var(--bg-container); margin-bottom: 12px; box-shadow: 0 1px 3px var(--shadow-color); border: 2px solid #0086ff;">
@@ -1798,23 +1796,28 @@ function renderizarModalEquipe() {
 
     let htmlLojas = ""; let htmlSelLoja = "";
     
-    // Se for orfaos, nem exibe as lojas para não confundir
+    // NOVO LAYOUT DA LOJA
     if (supervisorGerenciadoAtual !== "orfaos") {
         lojasDaRegiao.forEach(loja => {
             let objL = lojasConfig[loja] || { vendedores: [], capa: 0 };
             htmlSelLoja += `<option value="${loja}">${loja}</option>`;
             
-            let vends = (objL.vendedores || []).map(v => `<span style="background:var(--bg-card); color:#0086ff; padding:2px 6px; border-radius:4px; font-size:11px; margin-right:4px; border:1px solid #b3d7ff;">${v} <i data-lucide="x" class="lucide-sm" style="cursor:pointer;" onclick="adminRemoverVendedor('${loja}', '${v}')"></i></span>`).join("");
+            let vends = (objL.vendedores || []).map(v => `<span style="background:var(--bg-fundo); color:var(--cor-texto); padding:4px 8px; border-radius:15px; font-size:11px; border:1px solid var(--border-color); display:flex; align-items:center; gap:4px;">${v} <i data-lucide="x" class="lucide-sm" style="cursor:pointer; color:#dc3545;" onclick="adminRemoverVendedor('${loja}', '${v}')"></i></span>`).join("");
 
-            htmlLojas += `<div style="background: var(--bg-container); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; margin-bottom: 8px; text-align: left;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                    <strong style="font-size:14px; color:var(--cor-texto);"><i data-lucide="store" class="lucide-sm"></i> ${loja}</strong>
-                    <div style="display:flex; gap:5px;">
-                        <button class="btn-editar-meta" onclick="adminAbrirModalCapa('${loja}')"><i data-lucide="layers" class="lucide-sm"></i> Capa: ${objL.capa || 0}</button>
-                        <button class="btn-excluir" onclick="adminRemoverLoja('${loja}')"><i data-lucide="trash-2" class="lucide-sm"></i></button>
-                    </div>
+            htmlLojas += `<div style="background: var(--bg-container); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; margin-bottom: 12px; box-shadow: 0 2px 4px var(--shadow-color);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px; border-bottom: 1px solid var(--bg-item); padding-bottom: 6px;">
+                    <strong style="font-size:15px; color:var(--cor-texto);"><i data-lucide="store" class="lucide-sm" style="color:#0086ff;"></i> ${loja}</strong>
+                    <div style="font-size: 11px; background: var(--bg-item); padding: 3px 8px; border-radius: 12px; font-weight: bold; color: var(--cor-secundaria);">Capa: ${objL.capa || 0}</div>
                 </div>
-                <div style="font-size:12px; color:var(--cor-secundaria); margin-top:5px;">Vendedores: ${vends || 'Nenhum'}</div>
+                
+                <div style="display:flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
+                    ${vends || '<span style="font-size:12px; color:var(--cor-secundaria); font-style:italic;">Sem vendedores</span>'}
+                </div>
+
+                <div style="display:flex; justify-content: flex-end; gap: 8px;">
+                    <button class="btn-editar" style="background:#17a2b8; padding: 6px 10px; font-size:11px;" onclick="adminAbrirModalCapa('${loja}')"><i data-lucide="layers" class="lucide-sm"></i> Editar Capa</button>
+                    <button class="btn-excluir" style="padding: 6px 10px; font-size:11px;" onclick="adminRemoverLoja('${loja}')"><i data-lucide="trash-2" class="lucide-sm"></i> Excluir Loja</button>
+                </div>
             </div>`;
         });
         divLojas.innerHTML = htmlLojas || "<p style='font-size:13px; color:var(--cor-secundaria);'>Nenhuma loja na região.</p>";
