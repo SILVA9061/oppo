@@ -1,0 +1,21 @@
+{
+  "name": "Portal OPPO",
+  "short_name": "Portal OPPO",
+  "description": "Sistema de Gestão e Inteligência de Vendas",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0086ff",
+  "icons": [
+    {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/b/b8/OPPO_Logo.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/b/b8/OPPO_Logo.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
