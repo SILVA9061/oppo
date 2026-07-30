@@ -51,7 +51,17 @@ function toggleTema() {
     document.body.classList.toggle('dark-mode');
     let isDark = document.body.classList.contains('dark-mode');
     localStorage.setItem('temaEscuro', isDark ? 'sim' : 'nao');
-    document.getElementById('btn-tema').innerHTML = isDark ? '<i data-lucide="sun"></i>' : '<i data-lucide="moon"></i>';
+    
+    // Atualiza o botão global (escondido no menu)
+    let btnGlobal = document.getElementById('btn-tema');
+    if (btnGlobal) btnGlobal.innerHTML = isDark ? '<i data-lucide="sun"></i>' : '<i data-lucide="moon"></i>';
+    
+    // Atualiza o botão local do Menu Premium
+    let iconTemaMenu = document.getElementById('icone-tema-menu');
+    if(iconTemaMenu) {
+        iconTemaMenu.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+    }
+
     loadIcons();
     if (document.getElementById('tela-dashboard').classList.contains('ativa')) abrirDashboard();
 }
@@ -60,6 +70,12 @@ function mudarTela(idTela) {
     document.querySelectorAll('.tela').forEach(t => t.classList.remove('ativa')); 
     document.getElementById(idTela).classList.add('ativa'); 
     
+    // Esconde o botão de tema solto se estivermos no Menu Principal (porque agora ele tem um próprio)
+    let btnTemaGlobal = document.getElementById('btn-tema');
+    if (btnTemaGlobal) {
+        btnTemaGlobal.style.display = (idTela === 'tela-menu') ? 'none' : 'block';
+    }
+
     const container = document.querySelector('.container');
     if(idTela === 'tela-dashboard' || idTela === 'tela-admin' || idTela === 'tela-historico') {
         container.classList.add('container-wide');
@@ -119,40 +135,24 @@ window.onload = function() {
     });
 };
 
-// >>> HIERARQUIA DE PERMISSÕES 100% CORRIGIDA (EFEITO PIRÂMIDE) <<<
 function podeGerenciar(logado, alvoId) {
     if (!logado || !alvoId) return false;
-    
-    // Master e Gestor podem tudo. O próprio usuário pode ver a si mesmo.
-    if (logado.id === "master" || logado.cargo === "master" || logado.cargo === "gestor" || logado.id === alvoId) return true;
+    // DEUS: Master e Gestor tem acesso livre a tudo
+    if (logado.id === "master" || logado.cargo === "master" || logado.cargo === "gestor") return true;
     
     let alvo = bancoUsuarios[alvoId]; 
     if (!alvo) return false;
 
     if (logado.cargo === "regional") {
-        // Se for regional, ele pode ver o alvo se as regiões forem exatamente iguais.
-        let regLogado = (logado.regiao || "").toUpperCase().trim();
-        let regAlvo = (alvo.regiao || "").toUpperCase().trim();
-        
-        if (regLogado && regAlvo && regLogado === regAlvo) return true;
-        
-        // Se o alvo foi criado pelo Regional
-        if (alvo.criadoPor === logado.id) return true;
-        
-        // Se for um Promotor cujo Supervisor seja da mesma região do Regional
-        if (alvo.cargo === "promotor" && alvo.criadoPor) {
-            let supDoPromotor = bancoUsuarios[alvo.criadoPor];
-            if (supDoPromotor && supDoPromotor.regiao) {
-                let regSup = supDoPromotor.regiao.toUpperCase().trim();
-                if (regSup === regLogado) return true;
-            }
+        if (alvo.cargo === "supervisor") return (alvo.regiao === logado.regiao) || (alvo.criadoPor === logado.id);
+        if (alvo.cargo === "promotor") { 
+            let supDoPromotor = bancoUsuarios[alvo.criadoPor]; 
+            if (supDoPromotor && supDoPromotor.regiao === logado.regiao) return true; 
+            return alvo.regiao === logado.regiao; 
         }
         return false;
     }
-    
-    // Se for Supervisor, só vê quem foi criado por ele
     if (logado.cargo === "supervisor") return alvo.criadoPor === logado.id;
-    
     return false;
 }
 
@@ -184,7 +184,7 @@ function verificarConferenciaEstoque() {
     }
     let hoje = new Date().toLocaleDateString('pt-BR'); let ultimaConferencia = localStorage.getItem('ultimaConferencia_' + usuarioLogado.id);
     let badge = document.getElementById('badge-estoque');
-    if (ultimaConferencia !== hoje) { if (badge) badge.style.display = 'inline-block'; } else { if (badge) badge.style.display = 'none'; }
+    if (ultimaConferencia !== hoje) { if (badge) badge.style.display = 'flex'; } else { if (badge) badge.style.display = 'none'; }
 }
 
 function filtrarListaLojas(texto, containerId) { texto = texto.toLowerCase(); const labels = document.getElementById(containerId).querySelectorAll('label'); labels.forEach(lbl => { if (lbl.innerText.toLowerCase().includes(texto)) lbl.style.display = 'flex'; else lbl.style.display = 'none'; }); }
@@ -259,7 +259,6 @@ function adminAbrirModalLojas(login) {
     let u = bancoUsuarios[login]; document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="store"></i> Lojas - ${u.nome || login}`;
     let html = `<input type="text" class="input-busca-loja" placeholder="Pesquisar loja..." onkeyup="filtrarListaLojas(this.value, 'edicao-lojas-container')" style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--cor-texto);"><div id="edicao-lojas-container" style="max-height: 180px; overflow-y: auto; text-align: left;">`;
     
-    // O Master, Gestor e Regional veem todas as lojas para consertar promotores
     let lojasOrdenadas = [];
     if (usuarioLogado.cargo === "master" || usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional") {
         lojasOrdenadas = Object.keys(lojasConfig).sort((a,b) => a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'}));
@@ -301,6 +300,13 @@ function adminAbrirModalCapa(loja) {
     document.getElementById('btn-salvar-edicao').onclick = function() { let val = parseInt(document.getElementById('input-edicao-capa').value); lojasConfig[loja].capa = isNaN(val) ? 0 : val; renderizarModalEquipe(); fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Capa atualizada com sucesso!", "sucesso"); }; document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
 }
 
+function adminAbrirModalVendedor(loja, vendedorAtual) {
+    document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="user-edit"></i> Editar Vendedor`;
+    let html = `<label style="font-size:13px; font-weight:bold; color:var(--cor-secundaria); display:block; margin-bottom:5px;">Nome na loja ${loja}:</label><input type="text" id="input-edicao-vendedor" value="${vendedorAtual}" style="width: 100%; padding: 10px;">`;
+    document.getElementById('modal-edicao-corpo').innerHTML = html;
+    document.getElementById('btn-salvar-edicao').onclick = function() { let novoNome = document.getElementById('input-edicao-vendedor').value.trim(); if(novoNome !== "") { let index = lojasConfig[loja].vendedores.indexOf(vendedorAtual); if (index !== -1) { lojasConfig[loja].vendedores[index] = novoNome; renderizarModalEquipe(); } } fecharModalEdicao(); salvarConfiguracoesGlobais(false); mostrarToast("Vendedor editado com sucesso!", "sucesso"); }; document.getElementById('modal-edicao').classList.add('ativo'); loadIcons();
+}
+
 function adminAbrirModalPermissoes(login) {
     let u = bancoUsuarios[login]; let p = u.permissoes || { vendas: true, acomp: true, estoque_ver: true, estoque_editar: true };
     document.getElementById('modal-edicao-titulo').innerHTML = `<i data-lucide="shield"></i> Permissões - @${login}`;
@@ -321,17 +327,32 @@ function adminAbrirModalPermissoes(login) {
 
 function getPromotorDaLoja(nomeLoja) { let promotores = []; for (let key in bancoUsuarios) { let u = bancoUsuarios[key]; if (u.cargo === "promotor" && u.lojasPermitidas.includes(nomeLoja)) { promotores.push(u.nome || (key.charAt(0).toUpperCase() + key.slice(1))); } } return promotores.length > 0 ? promotores.join(", ") : "Não Atribuído"; }
 
-// ================= NOTIFICAÇÕES (SINO) EM TEMPO REAL =================
-function inicializarNotificacoes() {
+// ================= NOVO MENU PREMIUM E NOTIFICAÇÕES =================
+
+function renderizarMenuPrincipal() {
+    let menuDiv = document.getElementById('tela-menu');
+    
+    // Oculta o botão de tema global para não duplicar, pois teremos um no header do menu
+    let btnTemaGlobal = document.getElementById('btn-tema');
+    if (btnTemaGlobal) btnTemaGlobal.style.display = 'none';
+
     let adminRole = (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master" || usuarioLogado.cargo === "supervisor");
-    if (!adminRole) return;
+    let perm = usuarioLogado.permissoes || { vendas: true, acomp: true, estoque_ver: true, estoque_editar: true };
 
-    let telaMenu = document.getElementById('tela-menu');
-    let sinoAntigo = document.getElementById('btn-sino-notificacao');
-    if (sinoAntigo) sinoAntigo.remove();
+    let nomeUser = (usuarioLogado.nome || "").split(" ")[0];
+    let cargoTexto = usuarioLogado.id === "master" ? "👑 Diretor Master" : (usuarioLogado.cargo === "gestor" ? "👔 Gestor Geral" : (usuarioLogado.cargo === "regional" ? "🌎 Gestor Regional" : (usuarioLogado.cargo === "supervisor" ? "📍 Supervisor" : "📱 Promotor")));
 
-    let sinoHtml = `
+    // Template HTML com o Grid Moderno
+    let html = `
     <style>
+        .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 25px; margin-bottom: 30px; }
+        .menu-card { background: var(--bg-item); border: 1px solid var(--border-color); border-radius: 16px; padding: 22px 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 4px 10px rgba(0,0,0,0.02); }
+        .menu-card:hover { transform: translateY(-3px); box-shadow: 0 8px 15px var(--shadow-color); border-color: #0086ff; }
+        .menu-card:active { transform: scale(0.96); }
+        .icon-wrapper { width: 50px; height: 50px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 5px; transition: all 0.3s; }
+        .card-title { font-size: 14px; font-weight: 700; color: var(--cor-texto); text-align: center; line-height: 1.2; letter-spacing: -0.2px;}
+        .sino-btn { position: relative; background: var(--bg-item); border: 1px solid var(--border-color); border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.05); transition: background 0.2s; }
+        .sino-btn:hover { background: var(--bg-card); }
         @keyframes sinoToca {
             0% { transform: rotate(0); }
             10% { transform: rotate(15deg); }
@@ -341,14 +362,81 @@ function inicializarNotificacoes() {
             50% { transform: rotate(0); }
             100% { transform: rotate(0); }
         }
-        .sino-animado { animation: sinoToca 3s infinite; }
+        .sino-animado { animation: sinoToca 2s infinite; }
     </style>
-    <div id="btn-sino-notificacao" onclick="abrirModalNotificacoes()" style="position: absolute; top: 20px; left: 20px; cursor: pointer; z-index: 100; background: linear-gradient(145deg, var(--bg-item), var(--bg-container)); padding: 12px; border-radius: 14px; border: 1px solid rgba(0, 134, 255, 0.3); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); transition: all 0.3s ease; display: flex; align-items: center; justify-content: center;">
-        <i data-lucide="bell" id="icone-sino-interno" style="margin:0; color: #0086ff; width: 22px; height: 22px;"></i>
-        <span id="badge-sino" style="display:none; position:absolute; top:-6px; right:-6px; background:#dc3545; color:white; border-radius:50%; padding:3px 7px; font-size:12px; font-weight:900; box-shadow: 0 2px 5px rgba(220,53,69,0.5); border: 2px solid var(--bg-fundo); animation: pulse 2s infinite;">0</span>
-    </div>`;
-    telaMenu.insertAdjacentHTML('afterbegin', sinoHtml);
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; text-align: left; margin-bottom: 10px; padding-bottom: 15px; border-bottom: 1px solid var(--bg-item);">
+        <div>
+            <h2 style="margin: 0 0 6px 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">Fala, ${nomeUser}!</h2>
+            <span style="font-size: 12px; font-weight: 700; color: #0086ff; background: rgba(0, 134, 255, 0.1); padding: 4px 10px; border-radius: 12px;">${cargoTexto}</span>
+        </div>
+        <div style="display: flex; gap: 12px; align-items: center;">
+            ${adminRole ? `
+            <div class="sino-btn" onclick="abrirModalNotificacoes()">
+                <i data-lucide="bell" id="icone-sino-interno" style="color: var(--cor-texto); width: 22px; height: 22px; margin:0;"></i>
+                <span id="badge-sino" style="display:none; position:absolute; top:-4px; right:-4px; background:#dc3545; color:white; border-radius:50%; width:18px; height:18px; font-size:10px; font-weight:900; align-items:center; justify-content:center; border: 2px solid var(--bg-container); box-shadow: 0 2px 4px rgba(220,53,69,0.4);">0</span>
+            </div>` : ''}
+            <div class="sino-btn" onclick="toggleTema()">
+                <i data-lucide="moon" id="icone-tema-menu" style="color: var(--cor-texto); width: 22px; height: 22px; margin:0;"></i>
+            </div>
+        </div>
+    </div>
 
+    <div class="menu-grid">`;
+
+    if (adminRole || perm.vendas) {
+        html += `<div class="menu-card" onclick="irParaVendas()">
+            <div class="icon-wrapper" style="background: rgba(0, 134, 255, 0.15); color: #0086ff;"><i data-lucide="shopping-bag" style="width:26px; height:26px; margin:0;"></i></div>
+            <span class="card-title">Lançar<br>Venda</span>
+        </div>`;
+    }
+    if (adminRole || perm.acomp) {
+        html += `<div class="menu-card" onclick="abrirAcompanhamento()">
+            <div class="icon-wrapper" style="background: rgba(23, 162, 184, 0.15); color: #17a2b8;"><i data-lucide="bar-chart-2" style="width:26px; height:26px; margin:0;"></i></div>
+            <span class="card-title">Acompanhar<br>Vendas</span>
+        </div>`;
+    }
+    if (adminRole || perm.estoque_ver) {
+        html += `<div class="menu-card" style="position:relative;" onclick="abrirEstoque()">
+            <div class="icon-wrapper" style="background: rgba(111, 66, 193, 0.15); color: #6f42c1;"><i data-lucide="package" style="width:26px; height:26px; margin:0;"></i></div>
+            <span class="card-title">Controle de<br>Estoque</span>
+            <span id="badge-estoque" style="position:absolute; top: -5px; right: -5px; background-color:#ff9800; color: white; width:20px; height:20px; display:none; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; border-radius:50%; box-shadow: 0 2px 5px rgba(255,152,0,0.4); border: 2px solid var(--bg-item);">!</span>
+        </div>`;
+    }
+    if (adminRole) {
+        html += `<div class="menu-card" onclick="abrirHistorico('geral')">
+            <div class="icon-wrapper" style="background: rgba(108, 117, 125, 0.15); color: #6c757d;"><i data-lucide="clock" style="width:26px; height:26px; margin:0;"></i></div>
+            <span class="card-title">Histórico<br>da Equipe</span>
+        </div>`;
+        html += `<div class="menu-card" onclick="abrirHistorico('estoque')">
+            <div class="icon-wrapper" style="background: rgba(255, 152, 0, 0.15); color: #ff9800;"><i data-lucide="search" style="width:26px; height:26px; margin:0;"></i></div>
+            <span class="card-title">Auditoria<br>de Estoque</span>
+        </div>`;
+        html += `<div class="menu-card" onclick="abrirDashboard()">
+            <div class="icon-wrapper" style="background: rgba(40, 167, 69, 0.15); color: #28a745;"><i data-lucide="pie-chart" style="width:26px; height:26px; margin:0;"></i></div>
+            <span class="card-title">Dashboard<br>& Metas</span>
+        </div>`;
+        html += `<div class="menu-card" onclick="abrirAdmin()">
+            <div class="icon-wrapper" style="background: rgba(52, 58, 64, 0.15); color: var(--cor-texto);"><i data-lucide="settings" style="width:26px; height:26px; margin:0;"></i></div>
+            <span class="card-title">Ajustes da<br>Empresa</span>
+        </div>`;
+    }
+
+    html += `</div>
+    <button class="btn-sistema btn-voltar" style="border-radius: 12px; font-size: 15px; background: transparent; border: 2px solid var(--border-color); color: var(--cor-texto); box-shadow: none;" onclick="fazerLogout()"><i data-lucide="log-out"></i> Encerrar Sessão</button>`;
+
+    menuDiv.innerHTML = html;
+    
+    let isDark = document.body.classList.contains('dark-mode');
+    let iconTema = document.getElementById('icone-tema-menu');
+    if(iconTema) iconTema.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+
+    loadIcons();
+    verificarConferenciaEstoque();
+    if (adminRole) inicializarNotificacoes();
+}
+
+function inicializarNotificacoes() {
     let modalAntigo = document.getElementById('modal-notificacoes');
     if (modalAntigo) modalAntigo.remove();
 
@@ -366,7 +454,6 @@ function inicializarNotificacoes() {
     </div>`;
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     
-    loadIcons();
     carregarNotificacoesSilencioso();
 }
 
@@ -470,7 +557,6 @@ function fecharModalNotificacoes() { document.getElementById('modal-notificacoes
 
 function irParaNotificacao(tipo, promotorLogin) {
     fecharModalNotificacoes();
-    
     document.getElementById('filtro-sup-historico').value = "todos"; 
     mudouSupHistorico(); 
 
@@ -527,37 +613,19 @@ function salvarNovaSenha() { let s1 = document.getElementById('nova-senha-1').va
 function fecharModalSenha() { document.getElementById('modal-senha').classList.remove('ativo'); }
 
 function entrarNoSistema() {
-    document.getElementById('saudacao-usuario').innerText = `Fala, ${usuarioLogado.nome}!`; document.getElementById('nome-usuario').value = ""; document.getElementById('senha-usuario').value = "";
-    let perm = usuarioLogado.permissoes || { vendas: true, acomp: true, estoque_ver: true, estoque_editar: true };
-    document.getElementById('btn-dashboard').style.display = "block"; 
-    
-    let adminRole = (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master" || usuarioLogado.cargo === "supervisor");
-    
-    if (adminRole) {
-        document.getElementById('btn-menu-venda').style.display = (usuarioLogado.cargo === "supervisor" || perm.vendas) ? "block" : "none"; 
-        document.getElementById('btn-menu-acomp').style.display = "block";
-        document.getElementById('btn-menu-estoque').style.display = "block"; 
-        document.getElementById('btn-admin').style.display = "block";
-        document.getElementById('btn-menu-historico').style.display = "block";
-        document.getElementById('btn-menu-auditoria').style.display = "block";
-        inicializarNotificacoes(); 
-    } else {
-        document.getElementById('btn-menu-venda').style.display = perm.vendas ? "block" : "none";
-        document.getElementById('btn-menu-acomp').style.display = perm.acomp ? "block" : "none";
-        document.getElementById('btn-menu-estoque').style.display = perm.estoque_ver ? "block" : "none";
-        document.getElementById('btn-admin').style.display = "none";
-        document.getElementById('btn-menu-historico').style.display = "none";
-        document.getElementById('btn-menu-auditoria').style.display = "none";
-        
-        let sino = document.getElementById('btn-sino-notificacao');
-        if (sino) sino.style.display = "none";
-    }
-
-    verificarConferenciaEstoque();
+    document.getElementById('saudacao-usuario').innerText = ""; 
+    document.getElementById('nome-usuario').value = ""; 
+    document.getElementById('senha-usuario').value = "";
+    renderizarMenuPrincipal();
     mudarTela('tela-menu');
 }
 
-function fazerLogout() { usuarioLogado = null; mudarTela('tela-login'); }
+function fazerLogout() { 
+    usuarioLogado = null; 
+    let btnTemaGlobal = document.getElementById('btn-tema');
+    if (btnTemaGlobal) btnTemaGlobal.style.display = 'block';
+    mudarTela('tela-login'); 
+}
 
 function irParaVendas() {
     if (usuarioLogado.cargo === "master" || usuarioLogado.cargo === "gestor") {
@@ -652,33 +720,16 @@ function renderizarFiltroPromotores() {
     let html = `<div class="card-promotor-filtro ${promotorFiltroAtual === 'todos' ? 'ativo' : ''}" onclick="setFiltroPromotor('todos')"><i data-lucide="layout-dashboard" class="lucide-sm"></i> Visão Geral (Todas)</div>`;
     
     if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") {
-        for (let key in bancoUsuarios) {
-            let u = bancoUsuarios[key];
-            let isSupervisor = (u.cargo === "supervisor" || u.cargo === "gestor" || u.cargo === "regional" || key === "master");
-            if (isSupervisor) {
-                let temEquipe = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === key);
-                if (temEquipe && podeGerenciar(usuarioLogado, key)) {
-                    html += `<div class="card-promotor-filtro ${promotorFiltroAtual === key ? 'ativo' : ''}" onclick="setFiltroPromotor('${key}')"><i data-lucide="users" class="lucide-sm"></i> Equipe ${u.nome || key}</div>`;
+        for (let key in bancoUsuarios) { 
+            if (bancoUsuarios[key].cargo === "supervisor") {
+                if(podeGerenciar(usuarioLogado, key)) {
+                    html += `<div class="card-promotor-filtro ${promotorFiltroAtual === key ? 'ativo' : ''}" onclick="setFiltroPromotor('${key}')"><i data-lucide="users" class="lucide-sm"></i> Equipe ${bancoUsuarios[key].nome || key}</div>`; 
                 }
-            }
+            } 
         }
-        let temOrfaos = Object.keys(bancoUsuarios).some(k => bancoUsuarios[k].cargo === "promotor" && (!bancoUsuarios[k].criadoPor || !bancoUsuarios[bancoUsuarios[k].criadoPor]));
-        if (temOrfaos && (usuarioLogado.id === "master" || usuarioLogado.cargo === "gestor")) {
-            html += `<div class="card-promotor-filtro ${promotorFiltroAtual === 'orfaos' ? 'ativo' : ''}" onclick="setFiltroPromotor('orfaos')" style="border-color:#ffc107; color:#856404;"><i data-lucide="alert-triangle" class="lucide-sm"></i> Órfãos</div>`;
-        }
-
-        if (promotorFiltroAtual !== 'todos') {
+        if (promotorFiltroAtual !== 'todos' && bancoUsuarios[promotorFiltroAtual]) {
             let htmlSub = `<div class="card-promotor-filtro ${subPromotorFiltroAtual === 'todos' ? 'ativo' : ''}" style="${subPromotorFiltroAtual === 'todos' ? 'background-color: #17a2b8; border-color: #17a2b8; color: white;' : 'background-color: var(--bg-item); color: var(--cor-secundaria); border-color: var(--border-color);'}" onclick="setSubFiltroPromotor('todos')"><i data-lucide="users" class="lucide-sm"></i> Todas (Equipe)</div>`;
-            for (let key in bancoUsuarios) { 
-                let u = bancoUsuarios[key];
-                if (u.cargo === "promotor") {
-                    let pertence = (promotorFiltroAtual === 'orfaos') ? (!u.criadoPor || !bancoUsuarios[u.criadoPor]) : (u.criadoPor === promotorFiltroAtual);
-                    if (pertence) {
-                        let isAt = subPromotorFiltroAtual === key; 
-                        htmlSub += `<div class="card-promotor-filtro ${isAt ? 'ativo' : ''}" style="${isAt ? 'background-color: #17a2b8; border-color: #17a2b8; color: white;' : 'background-color: var(--bg-item); color: var(--cor-secundaria); border-color: var(--border-color);'}" onclick="setSubFiltroPromotor('${key}')"><i data-lucide="user" class="lucide-sm"></i> ${u.nome || key}</div>`;
-                    }
-                }
-            }
+            for (let key in bancoUsuarios) { if (bancoUsuarios[key].cargo === "promotor" && bancoUsuarios[key].criadoPor === promotorFiltroAtual) { let isAt = subPromotorFiltroAtual === key; htmlSub += `<div class="card-promotor-filtro ${isAt ? 'ativo' : ''}" style="${isAt ? 'background-color: #17a2b8; border-color: #17a2b8; color: white;' : 'background-color: var(--bg-item); color: var(--cor-secundaria); border-color: var(--border-color);'}" onclick="setSubFiltroPromotor('${key}')"><i data-lucide="user" class="lucide-sm"></i> ${bancoUsuarios[key].nome || key}</div>`; } }
             if(divSub) { divSub.innerHTML = htmlSub; divSub.style.display = "flex"; }
         } else { if(divSub) divSub.style.display = "none"; }
     } else if (usuarioLogado.cargo === "supervisor") {
@@ -744,7 +795,7 @@ function renderizarListaAcompanhamento() {
                     }
                     if (subPromotorFiltroAtual !== "todos" && pKey !== subPromotorFiltroAtual) return; 
                 } else { 
-                    if (pKey !== "sem_promotor" && !podeGerenciar(usuarioLogado, pKey)) return; 
+                    if (pKey !== "sem_promotor" && !podeGerenciar(usuarioLogado, bancoUsuarios[pKey]?.criadoPor)) return; 
                 } 
             } else if (usuarioLogado.cargo === "supervisor") {
                 if (pKey === "sem_promotor") return; 
@@ -778,7 +829,7 @@ function renderizarListaAcompanhamento() {
     } div.innerHTML = html; loadIcons();
 }
 
-// ================= FUNÇÕES DO ESTOQUE E MOSTRUÁRIO ================= //
+// ================= ESTOQUE E MOSTRUÁRIO ================= //
 
 function fecharModalConfirmMostruario() { document.getElementById('modal-confirm-mostruario').classList.remove('ativo'); mostruarioEmEdicao = null; }
 function fecharModalPromptMostruario() { document.getElementById('modal-prompt-mostruario').classList.remove('ativo'); mostruarioEmEdicao = null; }
@@ -1122,15 +1173,15 @@ function renderizarListaHistorico() {
         if(tipoHistoricoAtual === 'geral' && tipoRegistro === 'estoque') return false; 
         
         let pLogin = getVal(row, ['promotor', 'usuario', 'login']);
+        let pObj = bancoUsuarios[pLogin];
         
         if (usuarioLogado.cargo === "promotor") {
             if (pLogin !== usuarioLogado.id) return false;
         } else if (usuarioLogado.cargo === "supervisor") {
-            if (pLogin !== usuarioLogado.id && !podeGerenciar(usuarioLogado, pLogin)) return false;
+            if (pLogin !== usuarioLogado.id && (!pObj || pObj.criadoPor !== usuarioLogado.id)) return false;
             if (promAlvo && promAlvo !== "todos" && pLogin !== promAlvo) return false;
         } else {
             if (supAlvo && supAlvo !== "todos") {
-                let pObj = bancoUsuarios[pLogin];
                 if (pLogin !== supAlvo && (!pObj || pObj.criadoPor !== supAlvo)) return false;
             } else if (supAlvo === "todos") {
                 if (pLogin !== usuarioLogado.id && pLogin !== "Sistema" && !podeGerenciar(usuarioLogado, pLogin)) return false;
@@ -1284,7 +1335,7 @@ function abrirDashboard() {
     if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") {
         document.getElementById('container-filtro-supervisor-dash').style.display = "block"; document.getElementById('container-filtro-promotor-dash').style.display = "block";
         if(selSup.options.length <= 1) { 
-            let htmlOp = usuarioLogado.cargo === "regional" ? '<option value="todos">Sua Região (Geral)</option>' : '<option value="todos">Todas as Regiões (Geral)</option>'; 
+            let htmlOp = '<option value="todos">Todas as Regiões (Geral)</option>'; 
             for(let k in bancoUsuarios) { 
                 let isSupervisor = (bancoUsuarios[k].cargo === "supervisor" || bancoUsuarios[k].cargo === "gestor" || bancoUsuarios[k].cargo === "regional" || k === "master");
                 if (isSupervisor) {
@@ -1368,7 +1419,7 @@ function gerarGraficos(dadosVendas) {
         metricas["Órfãos"] = { login: "orfaos", nome: "Órfãos", metaPremium: 0, metaIndividual: 0, realizadoPremium: 0, realizadoGeral: 0, modelosPremiumVendidos: {}, modelosVendidosGeral: {}, comissaoAcumulada: 0 };
         
         for (let k in bancoUsuarios) {
-            if (bancoUsuarios[k].cargo === "promotor" && podeGerenciar(usuarioLogado, k)) {
+            if (bancoUsuarios[k].cargo === "promotor") {
                 let supDoPromotor = bancoUsuarios[k].criadoPor;
                 let isOrfao = (!supDoPromotor || !bancoUsuarios[supDoPromotor]);
                 
@@ -1392,7 +1443,7 @@ function gerarGraficos(dadosVendas) {
         }
     } else {
         for (let k in bancoUsuarios) {
-            if (bancoUsuarios[k].cargo === "promotor" && podeGerenciar(usuarioLogado, k)) {
+            if (bancoUsuarios[k].cargo === "promotor") {
                 let supDoPromotor = bancoUsuarios[k].criadoPor;
                 let isOrfao = (!supDoPromotor || !bancoUsuarios[supDoPromotor]);
 
@@ -1401,6 +1452,7 @@ function gerarGraficos(dadosVendas) {
                     if (supervisorFoco !== "orfaos" && supDoPromotor !== supervisorFoco) continue;
                 }
                 if (promotorFoco !== "todos" && k !== promotorFoco) continue;
+                if (usuarioLogado.cargo !== "promotor" && !podeGerenciar(usuarioLogado, k)) continue;
 
                 let pNome = bancoUsuarios[k].nome || k;
                 let supKey = isOrfao ? "geral" : supDoPromotor;
@@ -1831,7 +1883,6 @@ function renderizarModalEquipe() {
 
     let htmlLojas = ""; let htmlSelLoja = "";
     
-    // NOVO LAYOUT DA LOJA
     if (supervisorGerenciadoAtual !== "orfaos") {
         lojasDaRegiao.forEach(loja => {
             let objL = lojasConfig[loja] || { vendedores: [], capa: 0 };
@@ -1847,7 +1898,7 @@ function renderizarModalEquipe() {
                 
                 <div style="font-size: 11px; font-weight: bold; color: var(--cor-secundaria); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Equipe de Vendas:</div>
                 <div style="display:flex; flex-wrap: wrap; gap: 6px; margin-bottom: 15px;">
-                    ${vends || '<span style="font-size:12px; color:var(--cor-secundaria); font-style:italic;">Nenhum vendedor cadastrado</span>'}
+                    ${vends || '<span style="font-size:12px; color:var(--cor-secundaria); font-style:italic;">Sem vendedores</span>'}
                 </div>
 
                 <div style="display:flex; justify-content: flex-end; gap: 10px; border-top: 1px dashed var(--border-color); padding-top: 12px;">
