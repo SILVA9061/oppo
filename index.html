@@ -14,6 +14,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 
 <!-- CSS EXTERNO -->
@@ -103,6 +104,35 @@
     </div>
 </div>
 
+<!-- MODAL DE MARKET SHARE ATUALIZADO COM MARCAS DINÂMICAS -->
+<div id="modal-fechamento-share" class="modal-overlay">
+    <div class="modal-content">
+        <h3 style="color: #3b82f6; margin-bottom: 10px; font-size: 22px;"><i data-lucide="pie-chart"></i> Market Share</h3>
+        <p style="color: var(--cor-secundaria); font-size: 13px; margin-bottom: 20px;">Lance o fechamento do dia para medir nossa fatia de mercado.</p>
+        
+        <div style="text-align: left; margin-bottom: 15px;">
+            <label style="font-size: 12px; font-weight: bold; color: var(--cor-secundaria);">Selecione a Loja:</label>
+            <select id="select-loja-share" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 15px; background: var(--bg-input); color: var(--cor-texto);"></select>
+            
+            <!-- AVISO DE AUTOMAÇÃO -->
+            <div style="background: rgba(16, 185, 129, 0.1); border: 1px dashed #10b981; padding: 10px; border-radius: 8px; margin-bottom: 15px; text-align: center;">
+                <span style="font-size: 12px; font-weight: bold; color: #10b981;"><i data-lucide="bot" class="lucide-sm"></i> Suas vendas (OPPO) são puxadas automaticamente!</span>
+            </div>
+
+            <label style="font-size: 12px; font-weight: bold; color: #ef4444; display: block; margin-bottom: 8px;">Concorrência (Fechamento do Dia):</label>
+            
+            <!-- AQUI É ONDE O JS VAI INJETAR AS MARCAS DINAMICAMENTE -->
+            <div id="container-inputs-concorrencia" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+            </div>
+        </div>
+
+        <div class="botoes-acao" style="gap: 15px;">
+            <button class="btn-acao btn-limpar" onclick="document.getElementById('modal-fechamento-share').classList.remove('ativo');">Cancelar</button>
+            <button class="btn-acao btn-enviar" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);" id="btn-salvar-share" onclick="enviarFechamentoShare()">Salvar Fechamento</button>
+        </div>
+    </div>
+</div>
+
 <div id="modal-gerenciar-equipe" class="modal-overlay">
     <div class="modal-fullscreen-content">
         <button onclick="fecharModalEquipe()" style="position: absolute; top: 15px; right: 15px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer;"><i data-lucide="x" class="lucide-sm" style="margin:0;"></i></button>
@@ -159,6 +189,21 @@
         <div class="botoes-acao">
             <button class="btn-acao btn-limpar" onclick="fecharModalEdicao()"><i data-lucide="x"></i> Cancelar</button>
             <button class="btn-acao btn-enviar" id="btn-salvar-edicao"><i data-lucide="check"></i> Confirmar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL DE NOVA MARCA CONCORRENTE -->
+<div id="modal-nova-marca" class="modal-overlay">
+    <div class="modal-content">
+        <h3 style="color: var(--primary);"><i data-lucide="plus-circle"></i> Nova Marca</h3>
+        <p style="font-size: 13px; color: var(--cor-secundaria); margin-bottom: 20px;">Digite o nome da nova marca concorrente (Ex: Xiaomi, Infinix, Realme):</p>
+        
+        <input type="text" id="input-nova-marca" placeholder="Nome da marca" style="width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--cor-texto); font-size: 15px; margin-bottom: 20px; text-align: center; font-weight: bold;">
+        
+        <div class="botoes-acao">
+            <button class="btn-acao btn-limpar" onclick="fecharModalNovaMarca()">Cancelar</button>
+            <button class="btn-acao btn-enviar" style="background: var(--primary-gradiente);" onclick="confirmarNovaMarca()">Adicionar</button>
         </div>
     </div>
 </div>
@@ -249,6 +294,7 @@
             <button class="btn-sistema" id="btn-dashboard" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); margin: 0; font-size: 14px; padding: 16px;" onclick="navAction('dashboard', document.getElementById('nav-acomp'))"><i data-lucide="bar-chart-2"></i> Metas</button>
             <button class="btn-sistema" id="btn-menu-historico" style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); margin: 0; font-size: 14px; padding: 16px;" onclick="abrirHistorico('geral')"><i data-lucide="clock"></i> Histórico</button>
             <button class="btn-sistema" id="btn-menu-auditoria" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); margin: 0; font-size: 14px; padding: 16px; grid-column: span 2;" onclick="abrirHistorico('estoque')"><i data-lucide="search"></i> Auditoria de Estoque</button>
+            <button class="btn-sistema" id="btn-menu-share" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); margin: 0; font-size: 14px; padding: 16px; grid-column: span 2;" onclick="abrirModalFechamento()"><i data-lucide="pie-chart"></i> Lançar Fechamento (Market Share)</button>
         </div>
     </div>
     <button class="btn-sistema btn-voltar" style="background: transparent; color: #ef4444 !important; box-shadow: none; border: 2px solid #ef4444; font-weight: bold;" onclick="fazerLogout()"><i data-lucide="log-out"></i> Sair do Sistema</button>
@@ -336,11 +382,23 @@
         <label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria); display: block; margin-bottom: 6px;">Filtrar Usuário:</label>
         <select id="filtro-promotor-historico" style="width: 100%; border-color: #8b5cf6; background-color: var(--bg-card); padding: 14px; margin-bottom: 0;" onchange="aplicarFiltroHistorico()"></select>
     </div>
-    <div style="margin-bottom: 15px; text-align: left;">
+    <div style="margin-bottom: 15px; text-align: left; display: flex; flex-direction: column; gap: 8px;">
         <label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria); display: flex; align-items: center; gap: 8px; cursor: pointer;">
             <input type="checkbox" id="filtro-ocultar-cancelados" onchange="aplicarFiltroHistorico()" checked style="width: auto; margin: 0;"> Ocultar vendas canceladas
         </label>
+        <label style="font-size: 13px; font-weight: bold; color: #ef4444; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" id="filtro-apenas-cancelados" onchange="aplicarFiltroHistorico()" style="width: auto; margin: 0;"> Ver APENAS estornos (Auditoria)
+        </label>
     </div>
+    
+    <div style="display: flex; gap: 5px; margin-bottom: 15px; overflow-x: auto; padding-bottom: 5px;" class="tabs-header">
+        <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--primary);" onclick="setFiltroDataRapido('hoje')">Hoje</button>
+        <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--primary);" onclick="setFiltroDataRapido('ontem')">Ontem</button>
+        <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--primary);" onclick="setFiltroDataRapido('semana')">Semana</button>
+        <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--primary);" onclick="setFiltroDataRapido('mes')">Mês</button>
+        <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--cor-secundaria); color: var(--cor-secundaria);" onclick="setFiltroDataRapido('limpar')">Limpar</button>
+    </div>
+
     <div style="display: flex; gap: 10px; margin-bottom: 20px;">
         <div style="flex: 1; text-align: left;">
             <label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria); display: block; margin-bottom: 6px;">Data Início:</label>
@@ -359,59 +417,97 @@
 </div>
 
 <div id="tela-dashboard" class="tela">
-    <div class="controles-topo-acompanhamento" style="margin-bottom: 20px; display: flex; gap: 10px; align-items: center;">
-        <select id="seletor-mes-dash" class="seletor-mes" style="padding: 14px; font-size: 15px; margin-bottom: 0; flex: 1; border-color: var(--primary);" onchange="abrirDashboard()"><option value="">Mês Atual</option></select>
+    
+    <!-- CONTROLES GERAIS (Servem para as duas abas) -->
+    <div class="controles-topo-acompanhamento" style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center;">
+        <select id="seletor-mes-dash" class="seletor-mes" style="padding: 14px; font-size: 15px; margin-bottom: 0; flex: 1; border-color: var(--primary);" onchange="abrirDashboard(); carregarGraficosShare();"><option value="">Mês Atual</option></select>
         <button class="btn-sistema" onclick="forcarAtualizacaoDashboard()" style="margin-bottom: 0; width: auto; padding: 14px 18px; border-radius: 12px; background: var(--primary-gradiente);" title="Forçar Atualização"><i data-lucide="refresh-cw" id="icon-refresh-dash" style="margin: 0;"></i></button>
+        <button class="btn-sistema" onclick="compartilharDashboard()" style="margin-bottom: 0; width: auto; padding: 14px 18px; border-radius: 12px; background: #8b5cf6;" title="Compartilhar Print"><i data-lucide="camera" style="margin: 0;"></i></button>
     </div>
-    <div id="container-filtro-supervisor-dash" style="display: none; margin-bottom: 15px;">
-        <label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria); display: block; text-align: left; margin-bottom: 6px;">Equipe / Região:</label>
-        <select id="filtro-supervisor-dash" class="seletor-mes" style="width: 100%; padding: 14px;" onchange="mudouSupervisorDash()"></select>
-    </div>
-    <div id="container-filtro-promotor-dash" style="display: none; margin-bottom: 20px;">
-        <label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria); display: block; text-align: left; margin-bottom: 6px;">Promotor:</label>
-        <select id="filtro-promotor-dash" class="seletor-mes" style="width: 100%; padding: 14px; border-color: #8b5cf6; background-color: var(--bg-card);" onchange="abrirDashboard()"></select>
-    </div>
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
-        <div style="background: var(--primary-gradiente); color: white; padding: 20px 15px; border-radius: 20px; box-shadow: 0 10px 20px rgba(34,197,94,0.25);">
-            <span style="font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; justify-content: center; gap: 6px;"><i data-lucide="shopping-bag" class="lucide-sm"></i> Vendas Totais</span>
-            <h1 id="total-vendas-geral" style="margin: 10px 0 0 0; font-size: 32px;">...</h1>
+
+    <!-- NOVOS FILTROS EM CASCATA GERAIS DO DASHBOARD -->
+    <div id="filtros-globais-dash" style="background: var(--bg-card); padding: 15px; border-radius: 16px; border: 1px solid var(--border-color); margin-bottom: 20px; text-align: left;">
+        <div id="container-filtro-supervisor-dash" style="display: none; margin-bottom: 12px;">
+            <label style="font-size: 11px; font-weight: bold; color: var(--cor-secundaria);">Equipe / Região (Supervisor):</label>
+            <select id="filtro-supervisor-dash" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--cor-texto);" onchange="mudouSupervisorDash()"></select>
         </div>
-        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px 15px; border-radius: 20px; box-shadow: 0 10px 20px rgba(16,185,129,0.25);">
-            <span style="font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; justify-content: center; gap: 6px;"><i data-lucide="trending-up" class="lucide-sm"></i> Média / Dia</span>
-            <h1 id="media-diaria-geral" style="margin: 10px 0 0 0; font-size: 32px;">...</h1>
+        
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <div id="container-filtro-promotor-dash" style="flex: 1; min-width: 140px; display: none;">
+                <label style="font-size: 11px; font-weight: bold; color: var(--cor-secundaria);">Promotor:</label>
+                <select id="filtro-promotor-dash" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #8b5cf6; background: var(--bg-input); color: var(--cor-texto);" onchange="mudouPromotorDash()"></select>
+            </div>
+            <div id="container-filtro-loja-dash" style="flex: 1; min-width: 140px;">
+                <label style="font-size: 11px; font-weight: bold; color: var(--cor-secundaria);">Filtrar por Loja:</label>
+                <select id="filtro-loja-dash" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #10b981; background: var(--bg-input); color: var(--cor-texto);" onchange="abrirDashboard(); carregarGraficosShare();"></select>
+            </div>
         </div>
     </div>
-    <div onclick="toggleComissao()" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 25px 20px; border-radius: 20px; box-shadow: 0 10px 25px rgba(245,158,11,0.3); cursor: pointer; transition: transform 0.2s; margin-bottom: 25px; text-align: left; display: flex; justify-content: space-between; align-items: center;">
-        <div>
-            <span style="font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 6px; margin-bottom: 8px;"><i data-lucide="dollar-sign" class="lucide-sm"></i> Comissão Prevista</span>
-            <h1 id="total-comissao-geral" style="margin: 0; font-size: 32px;" data-valor="R$ 0,00">R$ ****</h1>
+
+    <!-- ABAS DO DASHBOARD -->
+    <div class="tabs-header" style="margin-bottom: 20px;">
+        <button class="tab-btn ativo dash-tab-btn" onclick="switchTab('dash-tab-oppo', 'dash-tab')"><i data-lucide="smartphone"></i> Resultados OPPO</button>
+        <button class="tab-btn dash-tab-btn" onclick="switchTab('dash-tab-mercado', 'dash-tab'); carregarGraficosShare();"><i data-lucide="globe"></i> Visão de Mercado</button>
+    </div>
+
+    <!-- INÍCIO DA ABA OPPO -->
+    <div id="dash-tab-oppo" class="dash-tab-content" style="display: block;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+            <div style="background: var(--primary-gradiente); color: white; padding: 20px 15px; border-radius: 20px; box-shadow: 0 10px 20px rgba(34,197,94,0.25);">
+                <span style="font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; justify-content: center; gap: 6px;"><i data-lucide="shopping-bag" class="lucide-sm"></i> Vendas Totais</span>
+                <h1 id="total-vendas-geral" style="margin: 10px 0 0 0; font-size: 32px;">...</h1>
+            </div>
+            <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px 15px; border-radius: 20px; box-shadow: 0 10px 20px rgba(16,185,129,0.25);">
+                <span style="font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; justify-content: center; gap: 6px;"><i data-lucide="trending-up" class="lucide-sm"></i> Média / Dia</span>
+                <h1 id="media-diaria-geral" style="margin: 10px 0 0 0; font-size: 32px;">...</h1>
+            </div>
         </div>
-        <span id="icone-olho-comissao" style="background: rgba(255,255,255,0.2); border-radius: 50%; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;"><i data-lucide="eye" style="margin:0;"></i></span>
-    </div>
-    <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; border: 1px solid var(--border-color);">
-        <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="pie-chart"></i> Modelos Mais Vendidos</h4>
-        <div style="position: relative; height: 260px; width: 100%; display: flex; justify-content: center;"><canvas id="graficoTopModelos"></canvas></div>
-    </div>
-    <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; text-align: left; border: 1px solid var(--border-color);">
-        <h4 style="margin-top:0; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; display: flex; align-items: center; gap: 8px;"><i data-lucide="star"></i> Aparelhos Foco</h4>
-        <div id="lista-foco-ativo-dash" style="font-size: 14px; margin-bottom: 15px; margin-top: 15px; color: var(--cor-texto);">Carregando alvo...</div>
-        <div id="detalhe-coparticipacao-cards" style="font-size: 14px; color: var(--cor-secundaria); border-top: 1px dashed var(--border-color); padding-top: 15px;">Carregando detalhes...</div>
-    </div>
-    <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; border: 1px solid var(--border-color);">
-        <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="target"></i> Meta Foco vs Realizado</h4>
-        <div style="width: 100%; overflow-x: auto; overflow-y: hidden;"><div id="wrap-graficoMetaPremiumCapa" style="position: relative; height: 350px; min-width: 100%;"><canvas id="graficoMetaPremiumCapa"></canvas></div></div>
-    </div>
-    <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; border: 1px solid var(--border-color);">
-        <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="percent"></i> Coparticipação Premium (%)</h4>
-        <div style="width: 100%; overflow-x: auto; overflow-y: hidden;"><div id="wrap-graficoCoparticipacaoPromotores" style="position: relative; height: 350px; min-width: 100%;"><canvas id="graficoCoparticipacaoPromotores"></canvas></div></div>
-    </div>
-    <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; text-align: left; border: 1px solid var(--border-color);">
-        <h4 id="titulo-ranking-dash" style="margin-top:0; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; display: flex; align-items: center; gap: 8px;"><i data-lucide="award"></i> Ranking</h4>
-        <div id="lista-ranking-promotores" style="margin-top: 15px;">Carregando ranking...</div>
-    </div>
-    <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; border: 1px solid var(--border-color);">
-        <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="store"></i> Vendas por Loja</h4>
-        <div style="width: 100%; overflow-x: auto; overflow-y: hidden;"><div id="wrap-graficoVendasLoja" style="position: relative; height: 350px; min-width: 100%;"><canvas id="graficoVendasLoja"></canvas></div></div>
+        <div onclick="toggleComissao()" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 25px 20px; border-radius: 20px; box-shadow: 0 10px 25px rgba(245,158,11,0.3); cursor: pointer; transition: transform 0.2s; margin-bottom: 25px; text-align: left; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <span style="font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 6px; margin-bottom: 8px;"><i data-lucide="dollar-sign" class="lucide-sm"></i> Comissão Prevista</span>
+                <h1 id="total-comissao-geral" style="margin: 0; font-size: 32px;" data-valor="R$ 0,00">R$ ****</h1>
+            </div>
+            <span id="icone-olho-comissao" style="background: rgba(255,255,255,0.2); border-radius: 50%; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;"><i data-lucide="eye" style="margin:0;"></i></span>
+        </div>
+        <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; border: 1px solid var(--border-color);">
+            <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="pie-chart"></i> Modelos Mais Vendidos</h4>
+            <div style="position: relative; height: 260px; width: 100%; display: flex; justify-content: center;"><canvas id="graficoTopModelos"></canvas></div>
+        </div>
+        <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; text-align: left; border: 1px solid var(--border-color);">
+            <h4 style="margin-top:0; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; display: flex; align-items: center; gap: 8px;"><i data-lucide="star"></i> Aparelhos Foco</h4>
+            <div id="lista-foco-ativo-dash" style="font-size: 14px; margin-bottom: 15px; margin-top: 15px; color: var(--cor-texto);">Carregando alvo...</div>
+            <div id="detalhe-coparticipacao-cards" style="font-size: 14px; color: var(--cor-secundaria); border-top: 1px dashed var(--border-color); padding-top: 15px;">Carregando detalhes...</div>
+        </div>
+        <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; border: 1px solid var(--border-color);">
+            <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="target"></i> Meta Foco vs Realizado</h4>
+            <div style="width: 100%; overflow-x: auto; overflow-y: hidden;"><div id="wrap-graficoMetaPremiumCapa" style="position: relative; height: 350px; min-width: 100%;"><canvas id="graficoMetaPremiumCapa"></canvas></div></div>
+        </div>
+        <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; border: 1px solid var(--border-color);">
+            <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="percent"></i> Coparticipação Premium (%)</h4>
+            <div style="width: 100%; overflow-x: auto; overflow-y: hidden;"><div id="wrap-graficoCoparticipacaoPromotores" style="position: relative; height: 350px; min-width: 100%;"><canvas id="graficoCoparticipacaoPromotores"></canvas></div></div>
+        </div>
+        <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; text-align: left; border: 1px solid var(--border-color);">
+            <h4 id="titulo-ranking-dash" style="margin-top:0; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; display: flex; align-items: center; gap: 8px;"><i data-lucide="award"></i> Ranking</h4>
+            <div id="lista-ranking-promotores" style="margin-top: 15px;">Carregando ranking...</div>
+        </div>
+        <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; border: 1px solid var(--border-color);">
+            <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="store"></i> Vendas por Loja</h4>
+            <div style="width: 100%; overflow-x: auto; overflow-y: hidden;"><div id="wrap-graficoVendasLoja" style="position: relative; height: 350px; min-width: 100%;"><canvas id="graficoVendasLoja"></canvas></div></div>
+        </div>
+    </div> <!-- FIM DA ABA OPPO -->
+
+    <!-- INÍCIO DA ABA DE MERCADO -->
+    <div id="dash-tab-mercado" class="dash-tab-content" style="display: none;">
+        <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; border: 1px solid var(--border-color);">
+            <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="pie-chart"></i> Market Share</h4>
+            <div style="position: relative; height: 260px; width: 100%; display: flex; justify-content: center;"><canvas id="graficoMarketShare"></canvas></div>
+            <div id="texto-resumo-share" style="margin-top: 15px; font-weight: bold; color: var(--primary);">Gráficos em breve...</div>
+        </div>
+
+        <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; text-align: left; border: 1px solid var(--border-color);">
+            <h4 style="margin-top:0; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; display: flex; align-items: center; gap: 8px;"><i data-lucide="thermometer"></i> Temperatura das Lojas</h4>
+            <div id="lista-temperatura-lojas" style="margin-top: 15px;">Carregando termômetro...</div>
+        </div>
     </div>
 </div>
 

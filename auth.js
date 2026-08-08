@@ -155,9 +155,24 @@ function fazerLogout() {
     usuarioLogado = null; 
     document.getElementById('bottom-nav-bar').classList.remove('ativa'); 
     document.getElementById('header-global').style.display = 'none'; 
+    
+    // 1. Limpa os campos digitados para o próximo usuário
+    let elNome = document.getElementById('nome-usuario');
+    if(elNome) elNome.value = ""; 
+    let elSenha = document.getElementById('senha-usuario');
+    if(elSenha) elSenha.value = "";
+    
+    // 2. Destrava o botão e volta ao normal
+    const btnLogin = document.getElementById("btn-login");
+    if(btnLogin) {
+        btnLogin.disabled = false;
+        btnLogin.innerHTML = '<i data-lucide="log-in" style="margin-right: 8px;"></i> Acessar Sistema';
+    }
+    
+    // 3. Volta para a tela de login
     mudarTela('tela-login'); 
+    loadIcons();
 }
-
 // Verifica se o usuário que fez o login tem autoridade sobre outro usuário
 function podeGerenciar(logado, alvoId) {
     if (!logado) return false; 

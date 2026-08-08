@@ -14,6 +14,7 @@ let chartCoparticipacao = null;
 let chartCapa = null; 
 let chartLojas = null; 
 let chartModelos = null;
+let chartShareGlobal = null;
 let supervisorGerenciadoAtual = null; 
 let mostruariosGlobais = JSON.parse(localStorage.getItem('mostruariosGlobais')) || {}; 
 let tipoHistoricoAtual = 'geral'; 
@@ -103,7 +104,6 @@ function renderizarListaAcompanhamento() {
             vendOrd.forEach((v) => { 
                 if (ult !== -1 && v.qtd < ult) rank++; ult = v.qtd; let cRank = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : 'rank-outros'; 
                 
-                // NOVO FORMATO DOS CARDS COM BADGE PARA EMOJI NA ACOMPANHAMENTO
                 let listaAp = v.ap.map(ap => {
                     let imeiMatch = ap.match(/IMEI:\s*(.*?)(\)|$)/);
                     let imei = imeiMatch ? imeiMatch[1].trim() : "";
@@ -144,7 +144,7 @@ function limparConferenciaEstoque() { renderizarListaEstoque(); }
 function verificarMotivoEstoque() { let chaves = Object.keys(pendenciasEstoque).filter(k => pendenciasEstoque[k].deltaTotal !== 0); if (chaves.length === 0) return; let adminRole = (usuarioLogado.cargo === "supervisor" || usuarioLogado.cargo === "regional" || usuarioLogado.cargo === "gestor" || usuarioLogado.id === "master"); if (adminRole) { executarEnvioEstoque("Ajuste Gerencial"); } else { document.getElementById('modal-motivo-estoque').classList.add('ativo'); } }
 function confirmarEnvioEstoqueMotivo() { document.getElementById('modal-motivo-estoque').classList.remove('ativo'); let motivoSelecionado = document.getElementById('select-motivo-estoque').value; executarEnvioEstoque(motivoSelecionado); }
 
-// ================= HISTÓRICO E DASHBOARD =================
+// ================= HISTÓRICO =================
 function extrairChaveAparelho(textoBruto) { let semImei = textoBruto.split("→")[0].split("(")[0].replace(/\[Motivo:.*?\]/g, "").trim().toLowerCase(); for (let chave in mapaEmojis) { if (semImei.includes(chave.toLowerCase())) { return chave.toLowerCase(); } } return semImei.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, "").trim(); }
 function ehPremium(textoBruto, supervisorId) { let chave = extrairChaveAparelho(textoBruto); let pSup = aparelhosPremium[supervisorId]; if (!pSup || Object.keys(pSup).length === 0) pSup = aparelhosPremium["geral"] || {}; return (pSup[chave] === 1 || pSup[chave] === true); }
 function abrirHistorico(tipo) { tipoHistoricoAtual = tipo; mudarTela('tela-historico'); let selSup = document.getElementById('filtro-sup-historico'); if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") { document.getElementById('container-filtro-sup-historico').style.display = "block"; let htmlOp = '<option value="todos">Todas as Regiões</option>'; for(let k in bancoUsuarios) { if(bancoUsuarios[k].cargo === "supervisor" && podeGerenciar(usuarioLogado, k)) { htmlOp += `<option value="${k}">Equipe: ${bancoUsuarios[k].nome || k}</option>`; } } selSup.innerHTML = htmlOp; } else { document.getElementById('container-filtro-sup-historico').style.display = "none"; } mudouSupHistorico(); carregarHistoricoDoBanco(); }
@@ -153,26 +153,125 @@ let limiteHistorico = 50; function aplicarFiltroHistorico() { limiteHistorico = 
 function abrirModalCancelarVenda(indexHist, pLogin) { vendaParaCancelar = { index: indexHist, login: pLogin }; let inputSenha = document.getElementById('senha-confirmacao-cancelamento'); if (inputSenha) inputSenha.value = ""; let modal = document.getElementById('modal-cancelar-venda'); if (modal) modal.classList.add('ativo'); }
 function fecharModalCancelarVenda() { let modal = document.getElementById('modal-cancelar-venda'); if (modal) modal.classList.remove('ativo'); vendaParaCancelar = null; }
 function validarECancelarVenda() { let inputSenha = document.getElementById('senha-confirmacao-cancelamento'); let senhaDigitada = inputSenha ? inputSenha.value.trim() : ""; if (senhaDigitada !== usuarioLogado.senha && usuarioLogado.id !== "master") { return mostrarToast("Senha incorreta. Estorno negado.", "erro"); } if(inputSenha) inputSenha.value = ""; let modal = document.getElementById('modal-cancelar-venda'); if (modal) modal.classList.remove('ativo'); executarCancelamentoVenda(); }
-function renderizarListaHistorico() { const div = document.getElementById("lista-historico"); let dataInicio = document.getElementById('filtro-data-inicio-historico').value; let dataFim = document.getElementById('filtro-data-fim-historico').value; let supAlvo = (usuarioLogado.cargo === "supervisor") ? usuarioLogado.id : document.getElementById('filtro-sup-historico').value; let promAlvo = document.getElementById('filtro-promotor-historico').value; let ocultarCancelados = document.getElementById('filtro-ocultar-cancelados') ? document.getElementById('filtro-ocultar-cancelados').checked : false; let filtrados = []; dadosHistoricoGlobal.forEach((row, index) => { if (row.excluidoApp) return; let kAcao = Object.keys(row).find(k => k.toLowerCase().includes('aç') || k.toLowerCase().includes('ac') || k.toLowerCase().includes('tipo')); let kProm = Object.keys(row).find(k => k.toLowerCase().includes('promotor')); let kData = Object.keys(row).find(k => k.toLowerCase().includes('data') || k.toLowerCase().includes('carimbo') || k.toLowerCase().includes('time')); let kDet = Object.keys(row).find(k => k.toLowerCase().includes('detalhe')); let tipoAcao = kAcao ? String(row[kAcao]).toLowerCase() : ""; let pLogin = kProm ? String(row[kProm]).trim() : ""; let dataLinha = kData ? row[kData] : ""; let detalhe = kDet ? String(row[kDet]) : ""; let isCancelado = (row["Status"] === "Cancelado" || detalhe.toLowerCase().includes('cancel')); if (ocultarCancelados && isCancelado) return; let isEstoque = tipoAcao.includes('estoque') || tipoAcao.includes('auditoria') || tipoAcao.includes('conferência'); if(tipoHistoricoAtual === 'estoque' && !isEstoque) return; if(tipoHistoricoAtual === 'geral' && isEstoque) return; if (usuarioLogado.id !== "master" && pLogin !== usuarioLogado.id) { if (!podeGerenciar(usuarioLogado, pLogin)) return; } let pObj = bancoUsuarios[pLogin]; if (supAlvo && supAlvo !== "todos") { if (pLogin !== supAlvo && (!pObj || pObj.criadoPor !== supAlvo)) return; } if (promAlvo && promAlvo !== "todos" && pLogin !== promAlvo) return; if(dataInicio && dataLinha) { let dt = new Date(dataInicio + "T00:00:00"); if(new Date(dataLinha) < dt) return; } if(dataFim && dataLinha) { let dt = new Date(dataFim + "T23:59:59"); if(new Date(dataLinha) > dt) return; } filtrados.push({row: row, originalIndex: index, pLogin: pLogin, isEstoque: isEstoque, detalhe: detalhe}); }); let filtrados_total = filtrados.length; filtrados = filtrados.slice(0, limiteHistorico); if(filtrados_total === 0) { div.innerHTML = "<div class='mensagem-vazia'>Nenhuma ação encontrada.</div>"; return; } let html = ""; filtrados.forEach(item => { let row = item.row; let kData = Object.keys(row).find(k => k.toLowerCase().includes('data') || k.toLowerCase().includes('carimbo') || k.toLowerCase().includes('time')); let dataFormatada = kData ? row[kData] : "Sem Data"; if (dataFormatada !== "Sem Data" && typeof dataFormatada === 'string' && dataFormatada.includes('T')) { let d = new Date(dataFormatada); if(!isNaN(d)) dataFormatada = d.toLocaleDateString('pt-BR') + ' às ' + d.toLocaleTimeString('pt-BR').slice(0, 5); } else if (dataFormatada !== "Sem Data" && !isNaN(new Date(dataFormatada))) { let d = new Date(dataFormatada); if (!dataFormatada.toString().includes("/")) { dataFormatada = d.toLocaleDateString('pt-BR') + ' às ' + d.toLocaleTimeString('pt-BR').slice(0, 5); } } let nomePromotor = bancoUsuarios[item.pLogin] ? bancoUsuarios[item.pLogin].nome : item.pLogin; if (!nomePromotor || nomePromotor === "undefined") nomePromotor = "Usuário Desconhecido"; let detalhe = item.detalhe; if (!detalhe) { let kAparelho = Object.keys(row).find(k => k.toLowerCase().includes('aparelho')); let kLoja = Object.keys(row).find(k => k.toLowerCase().includes('loja')); let kVendedor = Object.keys(row).find(k => k.toLowerCase().includes('vendedor')); let aparelhoVal = kAparelho ? row[kAparelho] : '?'; let lojaVal = kLoja ? row[kLoja] : 'Geral'; let vendVal = kVendedor ? row[kVendedor] : 'Vendedor não informado'; detalhe = tipoHistoricoAtual === 'estoque' ? `[${lojaVal}] ${aparelhoVal}` : `Venda: ${aparelhoVal} | ${vendVal}`; } let isCancelado = row["Status"] === "Cancelado" || detalhe.toLowerCase().includes('cancel'); let opacidade = isCancelado ? "opacity: 0.6;" : ""; let icone = tipoHistoricoAtual === 'estoque' ? '<i data-lucide="package" style="color:#f59e0b;" class="lucide-sm"></i>' : '<i data-lucide="shopping-bag" style="color:#10b981;" class="lucide-sm"></i>'; if (isCancelado) icone = '<i data-lucide="slash" style="color:#ef4444;" class="lucide-sm"></i>'; let btnCancelar = ""; let btnDesfazer = ""; let adminRole = (usuarioLogado.cargo === "supervisor" || usuarioLogado.cargo === "regional" || usuarioLogado.cargo === "gestor" || usuarioLogado.id === "master"); if (tipoHistoricoAtual === 'geral' && adminRole) { if (!isCancelado) { btnCancelar = `<button onclick="abrirModalCancelarVenda(${item.originalIndex}, '${item.pLogin}')" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px;"><i data-lucide="x-circle" class="lucide-sm"></i> Cancelar</button>`; } else { btnDesfazer = `<button onclick="executarDesfazerCancelamento(${item.originalIndex})" style="background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px;"><i data-lucide="rotate-ccw" class="lucide-sm"></i> Desfazer</button>`; } } html += `<div style="${opacidade} background:var(--bg-card); border:1px solid ${isCancelado ? '#ef4444' : 'var(--border-color)'}; padding:16px; border-radius:12px; margin-bottom:12px; display:flex; flex-direction:column; gap:8px;"><div style="display:flex; justify-content:space-between; align-items:center;"><span style="font-size:12px; font-weight:bold; color:var(--cor-secundaria);">${dataFormatada}</span><span style="font-size:13px; font-weight:bold; color:var(--primary);"><i data-lucide="user" class="lucide-sm"></i> ${nomePromotor}</span></div><div style="font-size:14px; color:var(--cor-texto); display:flex; align-items:flex-start; justify-content: space-between; gap:8px;"><div style="display: flex; align-items: flex-start; gap: 8px;">${icone} <span>${isCancelado && !detalhe.toLowerCase().includes('cancelou o seguinte') ? '<b style="color:#ef4444;">[CANCELADO]</b> ' : ''}${detalhe}</span></div><div style="display:flex; gap:8px;">${btnDesfazer}${btnCancelar}</div></div></div>`; }); div.innerHTML = html; loadIcons(); if (filtrados_total > limiteHistorico) { div.innerHTML += `<button class="btn-sistema" style="margin-top: 15px; background: var(--bg-item); color: var(--primary); border: 1px solid var(--primary);" onclick="limiteHistorico += 50; renderizarListaHistorico();">Carregar mais históricos...</button>`; } }
-function forcarAtualizacaoDashboard() { mostrarToast("Buscando dados atualizados...", "info"); let icone = document.getElementById('icon-refresh-dash'); if(icone) icone.style.animation = "spin 1s linear infinite"; abrirDashboard(); }
-function atualizarFiltroPromotorDash() { let selSup = document.getElementById('filtro-supervisor-dash').value; let selProm = document.getElementById('filtro-promotor-dash'); let promotorAtual = selProm.value; let htmlOp = '<option value="todos">Todos da Equipe</option>'; let supAlvo = (usuarioLogado.cargo === "supervisor") ? usuarioLogado.id : selSup; if (supAlvo && supAlvo !== "todos") { for(let k in bancoUsuarios) { if (bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === supAlvo) { htmlOp += `<option value="${k}">${bancoUsuarios[k].nome || k}</option>`; } } } selProm.innerHTML = htmlOp; if (Array.from(selProm.options).some(opt => opt.value === promotorAtual)) { selProm.value = promotorAtual; } }
-function mudouSupervisorDash() { atualizarFiltroPromotorDash(); abrirDashboard(); }
-function abrirDashboard() { mudarTela('tela-dashboard'); let selSup = document.getElementById('filtro-supervisor-dash'); window.confettiDisparado = false; if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") { document.getElementById('container-filtro-supervisor-dash').style.display = "block"; document.getElementById('container-filtro-promotor-dash').style.display = "block"; if(selSup.options.length <= 1) { let htmlOp = '<option value="todos">Todas as Regiões (Geral)</option>'; for(let k in bancoUsuarios) { if (bancoUsuarios[k].cargo === "supervisor") { if (podeGerenciar(usuarioLogado, k)) { htmlOp += `<option value="${k}">Equipe: ${bancoUsuarios[k].nome || k}</option>`; } } } selSup.innerHTML = htmlOp; } } else if (usuarioLogado.cargo === "supervisor") { document.getElementById('container-filtro-supervisor-dash').style.display = "none"; document.getElementById('container-filtro-promotor-dash').style.display = "block"; } else { document.getElementById('container-filtro-supervisor-dash').style.display = "none"; document.getElementById('container-filtro-promotor-dash').style.display = "none"; } if (document.getElementById('filtro-promotor-dash').options.length <= 1) { atualizarFiltroPromotorDash(); } document.getElementById("total-comissao-geral").innerText = "R$ ****"; document.getElementById("icone-olho-comissao").innerHTML = '<i data-lucide="eye" style="margin:0;"></i>'; loadIcons(); const selDash = document.getElementById("seletor-mes-dash"); let url = URL_DA_SUA_API + (selDash && selDash.value ? "?mes=" + encodeURIComponent(selDash.value) : ""); document.getElementById("total-vendas-geral").innerText = "..."; fetch(url, { redirect: "follow" }).then(r => { if (!r.ok) throw new Error("Erro"); return r.json(); }).then(res => { if (res.status === "sucesso") { dadosAcompanhamentoGlobal = res.dados || []; gerarGraficos(dadosAcompanhamentoGlobal); } else { document.getElementById("total-vendas-geral").innerText = "Erro!"; } }).catch(e => { document.getElementById("total-vendas-geral").innerText = "0 un"; mostrarBotaoReconexao(); }).finally(() => { let icone = document.getElementById('icon-refresh-dash'); if(icone) icone.style.animation = "none"; loadIcons(); }); }
+function renderizarListaHistorico() { const div = document.getElementById("lista-historico"); let dataInicio = document.getElementById('filtro-data-inicio-historico').value; let dataFim = document.getElementById('filtro-data-fim-historico').value; let supAlvo = (usuarioLogado.cargo === "supervisor") ? usuarioLogado.id : document.getElementById('filtro-sup-historico').value; let promAlvo = document.getElementById('filtro-promotor-historico').value; let ocultarCancelados = document.getElementById('filtro-ocultar-cancelados') ? document.getElementById('filtro-ocultar-cancelados').checked : false; let apenasCancelados = document.getElementById('filtro-apenas-cancelados') ? document.getElementById('filtro-apenas-cancelados').checked : false; if(apenasCancelados) { document.getElementById('filtro-ocultar-cancelados').checked = false; ocultarCancelados = false; } let filtrados = []; dadosHistoricoGlobal.forEach((row, index) => { if (row.excluidoApp) return; let tipoAcao = row.Tipo || row.tipo || "venda"; let pLogin = row.promotor_login || row.Promotor || ""; let dataLinha = row.data_venda || row.Data || ""; let detalhe = row.Detalhe || row.detalhes || `Venda: ${row.aparelhos_vendidos} | [${row.loja}] ${row.vendedor}`; let isCancelado = row.status === "Cancelado" || row.Status === "Cancelado" || detalhe.toLowerCase().includes('cancel'); if (ocultarCancelados && isCancelado) return; if (apenasCancelados && !isCancelado) return; let isEstoque = tipoAcao.toLowerCase().includes('estoque') || tipoAcao.toLowerCase().includes('auditoria'); if (tipoHistoricoAtual === 'estoque' && !isEstoque) return; if (tipoHistoricoAtual === 'geral' && isEstoque) return; if (usuarioLogado.id !== "master" && pLogin !== usuarioLogado.id) { if (!podeGerenciar(usuarioLogado, pLogin)) return; } let pObj = bancoUsuarios[pLogin]; if (supAlvo && supAlvo !== "todos") { if (pLogin !== supAlvo && (!pObj || pObj.criadoPor !== supAlvo)) return; } if (promAlvo && promAlvo !== "todos" && pLogin !== promAlvo) return; if(dataInicio && dataLinha) { let dt = new Date(dataInicio + "T00:00:00"); if(new Date(dataLinha) < dt) return; } if(dataFim && dataLinha) { let dt = new Date(dataFim + "T23:59:59"); if(new Date(dataLinha) > dt) return; } filtrados.push({row: row, originalIndex: index, pLogin: pLogin, isEstoque: isEstoque, detalhe: detalhe, isCancelado: isCancelado, dataLinha: dataLinha}); }); let filtrados_total = filtrados.length; filtrados = filtrados.slice(0, limiteHistorico); if(filtrados_total === 0) { div.innerHTML = "<div class='mensagem-vazia'>Nenhuma ação encontrada.</div>"; return; } let html = ""; filtrados.forEach(item => { let dataFormatada = "Sem Data"; if (item.dataLinha) { let d = new Date(item.dataLinha); if(!isNaN(d)) dataFormatada = d.toLocaleDateString('pt-BR') + ' às ' + d.toLocaleTimeString('pt-BR').slice(0, 5); } let nomePromotor = bancoUsuarios[item.pLogin] ? bancoUsuarios[item.pLogin].nome : item.pLogin; if (!nomePromotor) nomePromotor = "Usuário Desconhecido"; let textoDetalheLimpo = item.detalhe.replace(/\[CANCELADO\]/ig, '').trim(); let opacidade = item.isCancelado ? "opacity: 0.7; filter: grayscale(0.8);" : ""; let bgCard = item.isCancelado ? "background: var(--bg-fundo);" : "background: var(--bg-card);"; let bordaCard = item.isCancelado ? "border: 1px dashed #ef4444;" : "border: 1px solid var(--border-color);"; let estiloTexto = item.isCancelado ? "text-decoration: line-through; color: var(--cor-secundaria);" : "color: var(--cor-texto);"; let badgeCancelado = item.isCancelado ? `<div style="background: #fee2e2; color: #ef4444; padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: bold; margin-bottom: 8px; display: inline-block;">ESTORNADO</div>` : ""; let icone = item.isEstoque ? '<i data-lucide="package" style="color:#f59e0b;" class="lucide-sm"></i>' : '<i data-lucide="shopping-bag" style="color:#10b981;" class="lucide-sm"></i>'; if (item.isCancelado) icone = '<i data-lucide="slash" style="color: #ef4444;" class="lucide-sm"></i>'; let btnAcao = ""; let adminRole = (usuarioLogado.cargo === "supervisor" || usuarioLogado.cargo === "regional" || usuarioLogado.cargo === "gestor" || usuarioLogado.id === "master"); if (tipoHistoricoAtual === 'geral' && adminRole) { if (!item.isCancelado) { btnAcao = `<button onclick="abrirModalCancelarVenda(${item.originalIndex}, '${item.pLogin}')" style="background: transparent; color: #ef4444; border: 1px solid rgba(239,68,68,0.3); padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer;"><i data-lucide="x-circle" class="lucide-sm"></i> Cancelar</button>`; } else { btnAcao = `<button onclick="executarDesfazerCancelamento(${item.originalIndex})" style="background: var(--bg-item); color: #10b981; border: 1px solid rgba(16,185,129,0.3); padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer;"><i data-lucide="rotate-ccw" class="lucide-sm"></i> Desfazer</button>`; } } html += `<div style="${opacidade} ${bgCard} ${bordaCard} padding: 16px; border-radius: 12px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px;">${badgeCancelado}<div style="display: flex; justify-content: space-between; align-items:center;"><span style="font-size:12px; font-weight:bold; color:var(--cor-secundaria);">${dataFormatada}</span><span style="font-size: 13px; font-weight:bold; color:var(--primary);"><i data-lucide="user" class="lucide-sm"></i> ${nomePromotor}</span></div><div style="font-size:14px; ${estiloTexto} display: flex; align-items: flex-start; justify-content: space-between; gap:8px;"><div style="display: flex; align-items: flex-start; gap: 8px;">${icone} <span>${textoDetalheLimpo}</span></div></div><div style="display: flex; justify-content: flex-end; margin-top: 4px;">${btnAcao}</div></div>`; }); div.innerHTML = html; loadIcons(); if (filtrados_total > limiteHistorico) { div.innerHTML += `<button class="btn-sistema" style="margin-top: 15px; background: var(--bg-item); color: var(--primary); border: 1px solid var(--primary);" onclick="limiteHistorico += 50; renderizarListaHistorico();">Carregar mais históricos...</button>`; } }
+function forcarAtualizacaoDashboard() { mostrarToast("Buscando dados atualizados...", "info"); let icone = document.getElementById('icon-refresh-dash'); if(icone) icone.style.animation = "spin 1s linear infinite"; abrirDashboard(); carregarGraficosShare(); }
+
+// ==========================================
+// FILTROS EM CASCATA DO DASHBOARD
+// ==========================================
+function atualizarFiltroPromotorDash() { let selSup = document.getElementById('filtro-supervisor-dash'); let supVal = selSup ? selSup.value : "todos"; let selProm = document.getElementById('filtro-promotor-dash'); if(!selProm) return; let promotorAtual = selProm.value; let htmlOp = '<option value="todos">Todos da Equipe</option>'; let supAlvo = (usuarioLogado.cargo === "supervisor") ? usuarioLogado.id : supVal; if (supAlvo && supAlvo !== "todos") { for(let k in bancoUsuarios) { if (bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === supAlvo) { htmlOp += `<option value="${k}">${bancoUsuarios[k].nome || k}</option>`; } } } selProm.innerHTML = htmlOp; if (Array.from(selProm.options).some(opt => opt.value === promotorAtual)) { selProm.value = promotorAtual; } }
+function atualizarFiltroLojaDash() {
+    let selProm = document.getElementById('filtro-promotor-dash');
+    let selLoja = document.getElementById('filtro-loja-dash');
+    if (!selLoja) return;
+    
+    let htmlOp = '<option value="todas">Todas as Lojas</option>';
+    let lojasDaBusca = [];
+    let promotorAtual = selProm ? selProm.value : "todos";
+    
+    if (promotorAtual && promotorAtual !== "todos") {
+        let userP = bancoUsuarios[promotorAtual];
+        if (userP && userP.lojasPermitidas) lojasDaBusca = userP.lojasPermitidas;
+    } else {
+        let selSup = document.getElementById('filtro-supervisor-dash') ? document.getElementById('filtro-supervisor-dash').value : "todos";
+        let supAlvo = (usuarioLogado.cargo === "supervisor") ? usuarioLogado.id : selSup;
+        if (supAlvo && supAlvo !== "todos" && typeof getLojasDaRegiao === "function") {
+            lojasDaBusca = getLojasDaRegiao(supAlvo);
+        } else {
+            lojasDaBusca = Object.keys(lojasConfig);
+        }
+    }
+    lojasDaBusca.sort().forEach(l => { htmlOp += `<option value="${l}">${l}</option>`; });
+    selLoja.innerHTML = htmlOp;
+}
+
+window.mudouSupervisorDash = function() { 
+    atualizarFiltroPromotorDash(); 
+    atualizarFiltroLojaDash();
+    abrirDashboard(); 
+    carregarGraficosShare();
+};
+
+window.mudouPromotorDash = function() {
+    atualizarFiltroLojaDash();
+    abrirDashboard();
+    carregarGraficosShare();
+};
+
+function abrirDashboard() { 
+    mudarTela('tela-dashboard'); 
+    let selSup = document.getElementById('filtro-supervisor-dash'); 
+    window.confettiDisparado = false; 
+    
+    if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") { 
+        document.getElementById('container-filtro-supervisor-dash').style.display = "block"; 
+        document.getElementById('container-filtro-promotor-dash').style.display = "block"; 
+        if(selSup && selSup.options.length <= 1) { 
+            let htmlOp = '<option value="todos">Todas as Regiões (Geral)</option>'; 
+            for(let k in bancoUsuarios) { if (bancoUsuarios[k].cargo === "supervisor") { if (podeGerenciar(usuarioLogado, k)) { htmlOp += `<option value="${k}">Equipe: ${bancoUsuarios[k].nome || k}</option>`; } } } 
+            selSup.innerHTML = htmlOp; 
+        } 
+    } else if (usuarioLogado.cargo === "supervisor") { 
+        document.getElementById('container-filtro-supervisor-dash').style.display = "none"; 
+        document.getElementById('container-filtro-promotor-dash').style.display = "block"; 
+    } else { 
+        document.getElementById('container-filtro-supervisor-dash').style.display = "none"; 
+        document.getElementById('container-filtro-promotor-dash').style.display = "none"; 
+    } 
+    
+    if (document.getElementById('filtro-promotor-dash') && document.getElementById('filtro-promotor-dash').options.length <= 1) { atualizarFiltroPromotorDash(); } 
+    if (document.getElementById('filtro-loja-dash') && document.getElementById('filtro-loja-dash').options.length <= 1) { atualizarFiltroLojaDash(); } 
+
+    document.getElementById("total-comissao-geral").innerText = "R$ ****"; 
+    document.getElementById("icone-olho-comissao").innerHTML = '<i data-lucide="eye" style="margin:0;"></i>'; 
+    loadIcons(); 
+    
+    document.getElementById("total-vendas-geral").innerText = "..."; 
+    
+    supabaseClient.from('vendas').select('*').neq('status', 'Cancelado').then(({ data, error }) => {
+        if (error) throw error;
+        let dados = data.map(row => ({
+            Vendedor: `[${row.loja}] ${row.vendedor}`,
+            Aparelhos: row.aparelhos_vendidos,
+            Data: row.data_venda
+        }));
+        dadosAcompanhamentoGlobal = dados; 
+        gerarGraficos(dados);
+    }).catch(e => { 
+        console.error(e);
+        document.getElementById("total-vendas-geral").innerText = "Erro!"; 
+        mostrarBotaoReconexao(); 
+    }).finally(() => { 
+        let icone = document.getElementById('icon-refresh-dash'); 
+        if(icone) icone.style.animation = "none"; 
+        loadIcons(); 
+    }); 
+}
+
 function toggleComissao() { let elComissao = document.getElementById("total-comissao-geral"); let iconeOlho = document.getElementById("icone-olho-comissao"); if (elComissao.innerText === "R$ ****") { elComissao.innerText = elComissao.dataset.valor || "R$ 0,00"; iconeOlho.innerHTML = '<i data-lucide="eye-off" style="margin:0;"></i>'; } else { elComissao.innerText = "R$ ****"; iconeOlho.innerHTML = '<i data-lucide="eye" style="margin:0;"></i>'; } loadIcons(); }
 function isCampaignActiveInMonth(startStr, endStr, mesSelecionado) { if (!startStr && !endStr) return true; let partes = mesSelecionado.split('/'); if(partes.length < 2) return true; let m = parseInt(partes[0], 10); let y = parseInt(partes[1], 10); let dtStart = startStr ? new Date(startStr + "T00:00:00") : new Date(2000, 0, 1); let dtEnd = endStr ? new Date(endStr + "T23:59:59") : new Date(2100, 0, 1); let startOfMonth = new Date(y, m - 1, 1); let endOfMonth = new Date(y, m, 0, 23, 59, 59); return dtStart <= endOfMonth && dtEnd >= startOfMonth; }
+
 function gerarGraficos(dadosVendas) {
     if (!dadosVendas) dadosVendas = []; let totalGeral = 0; let vendasPorLoja = {}; let vendasPorModelo = {}; let metricas = {}; let modelosFocoVendidos = {}; let rankingPorLoja = {}; 
-    let supervisorFoco = "todos"; let promotorFoco = "todos";
+    let supervisorFoco = "todos"; let promotorFoco = "todos"; let lojaFoco = "todas";
+    
     if (usuarioLogado.cargo === "promotor") { supervisorFoco = bancoUsuarios[usuarioLogado.id].criadoPor || "todos"; promotorFoco = usuarioLogado.id; } 
     else { if (usuarioLogado.cargo === "supervisor") supervisorFoco = usuarioLogado.id; else if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") supervisorFoco = document.getElementById('filtro-supervisor-dash').value; if (document.getElementById('container-filtro-promotor-dash').style.display !== "none") { promotorFoco = document.getElementById('filtro-promotor-dash').value || "todos"; } }
 
-    let agrupamento = (supervisorFoco === "todos") ? "supervisor" : "promotor"; let visualizarVendedores = (promotorFoco !== "todos"); 
+    let elLoja = document.getElementById('filtro-loja-dash');
+    if (elLoja) lojaFoco = elLoja.value || "todas";
+
+    let agrupamento = (supervisorFoco === "todos") ? "supervisor" : "promotor"; let visualizarVendedores = (promotorFoco !== "todos" || lojaFoco !== "todas"); 
+    
     if (agrupamento === "supervisor") { for (let k in bancoUsuarios) { if (bancoUsuarios[k].cargo === "supervisor") { if(podeGerenciar(usuarioLogado, k)) { let nomeSup = bancoUsuarios[k].nome || k; metricas[nomeSup] = { login: k, nome: nomeSup, metaPremium: 0, metaIndividual: 0, realizadoPremium: 0, realizadoGeral: 0, modelosPremiumVendidos: {}, modelosVendidosGeral: {}, comissaoAcumulada: 0 }; } } } }
 
     for (let k in bancoUsuarios) { if (bancoUsuarios[k].cargo === "promotor") { let supDoPromotor = bancoUsuarios[k].criadoPor; if (supervisorFoco !== "todos" && supDoPromotor !== supervisorFoco) continue; if (promotorFoco !== "todos" && k !== promotorFoco) continue; if (supervisorFoco === "todos" && !podeGerenciar(usuarioLogado, k)) continue; let metaIndPromotor = bancoUsuarios[k].meta || 0; let taxaSup = taxasCoparticipacao[supDoPromotor] || taxasCoparticipacao["geral"] || 25; let metaPremPromotor = metaIndPromotor * (taxaSup / 100); if (agrupamento === "supervisor") { if (supDoPromotor && bancoUsuarios[supDoPromotor]) { let nomeSup = bancoUsuarios[supDoPromotor].nome || supDoPromotor; if(metricas[nomeSup]) { metricas[nomeSup].metaPremium += metaPremPromotor; metricas[nomeSup].metaIndividual += metaIndPromotor; } } } else { let pNome = bancoUsuarios[k].nome || k; metricas[pNome] = { login: k, nome: pNome, metaPremium: metaPremPromotor, metaIndividual: metaIndPromotor, realizadoPremium: 0, realizadoGeral: 0, modelosPremiumVendidos: {}, modelosVendidosGeral: {}, comissaoAcumulada: 0 }; } } }
 
     dadosVendas.forEach(row => {
         let match = (row["Vendedor"] || "").match(/^\[(.*?)\]\s*(.*)$/); let loja = match ? match[1] : "Outras"; let vendNome = match ? match[2] : row["Vendedor"];
+        
+        if (lojaFoco !== "todas" && loja !== lojaFoco) return;
+        
         let lista = (row["Aparelhos"] || "").split("||").map(x => x.trim()).filter(x => x !== ""); let qtd = lista.length; let pertenceAoEscopo = false; let promotoresImpactados = new Set(); let supervisoresImpactados = new Set();
         for (let k in bancoUsuarios) { if (bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].lojasPermitidas && bancoUsuarios[k].lojasPermitidas.includes(loja)) { if (supervisorFoco === "todos" || bancoUsuarios[k].criadoPor === supervisorFoco) { if (promotorFoco === "todos" || k === promotorFoco) { if (podeGerenciar(usuarioLogado, k)) { pertenceAoEscopo = true; promotoresImpactados.add(k); if(bancoUsuarios[k].criadoPor) supervisoresImpactados.add(bancoUsuarios[k].criadoPor); } } } } }
         if (!pertenceAoEscopo) return; totalGeral += qtd; if (!vendasPorLoja[loja]) vendasPorLoja[loja] = 0; vendasPorLoja[loja] += qtd;
@@ -204,28 +303,13 @@ function gerarGraficos(dadosVendas) {
 
         for(let modChave in m.modelosVendidosGeral) { 
             let qtdMod = m.modelosVendidosGeral[modChave]; let cfg = aparelhosCfg[modChave] || { tipo: 'nenhum' }; 
-            
-            if (cfg.tipo === 'fixo') { 
-                comissaoUser += (qtdMod * (Number(cfg.valorFixo) || 0)); 
-            } 
+            if (cfg.tipo === 'fixo') { comissaoUser += (qtdMod * (Number(cfg.valorFixo) || 0)); } 
             else if (cfg.tipo === 'grupo' && cfg.grupoId) {
                 let g = grupos.find(x => x.id === cfg.grupoId);
                 if (g && cfg.valores) {
-                    let volumeTotalGrupo = volumePorGrupo[cfg.grupoId] || 0; 
-                    let nivelAlcancadoIdx = null; 
-                    let maiorMeta = -1;
-                    
-                    g.niveis.forEach((nv, idx) => { 
-                        if (volumeTotalGrupo >= Number(nv.meta) && Number(nv.meta) >= maiorMeta) { 
-                            nivelAlcancadoIdx = idx; 
-                            maiorMeta = Number(nv.meta); 
-                        } 
-                    });
-                    
-                    if (nivelAlcancadoIdx !== null) { 
-                        let payout = Number(cfg.valores[nivelAlcancadoIdx]) || 0; 
-                        comissaoUser += (qtdMod * payout); 
-                    }
+                    let volumeTotalGrupo = volumePorGrupo[cfg.grupoId] || 0; let nivelAlcancadoIdx = null; let maiorMeta = -1;
+                    g.niveis.forEach((nv, idx) => { if (volumeTotalGrupo >= Number(nv.meta) && Number(nv.meta) >= maiorMeta) { nivelAlcancadoIdx = idx; maiorMeta = Number(nv.meta); } });
+                    if (nivelAlcancadoIdx !== null) { let payout = Number(cfg.valores[nivelAlcancadoIdx]) || 0; comissaoUser += (qtdMod * payout); }
                 }
             } 
             else if (cfg.tipo === undefined && (cfg.comissionado === true || cfg.comissionado === 'true')) {
@@ -342,7 +426,6 @@ function renderizarAdminUsuarios() {
 
 function filtrarListaModal(classe, termo) { termo = termo.toLowerCase(); let itens = document.querySelectorAll('.' + classe); itens.forEach(item => { if(item.innerText.toLowerCase().includes(termo)) { item.style.display = "block"; } else { item.style.display = "none"; } }); }
 
-// -- FUNÇÕES DO PAINEL DE EQUIPE QUE ESTAVAM FALTANDO --
 function abrirPainelEquipe(login) {
     supervisorGerenciadoAtual = login;
     let supNome = bancoUsuarios[login].nome || login;
@@ -458,28 +541,14 @@ function adminAddAparelho() {
     mapaEmojis[n] = e; document.getElementById('admin-aparelho-nome').value = ""; document.getElementById('admin-aparelho-emoji').value = ""; renderizarAdminAparelhos(); mostrarToast("Aparelho adicionado. Clique em 'Salvar'.", "info");
 }
 
-async function salvarConfiguracoesGlobais(mostrarAviso = true) {
-    if (!navigator.onLine) { mostrarToast("Sem conexão para salvar.", "erro"); mostrarBotaoReconexao(); return; }
-    let btnSalvarHeader = document.querySelectorAll('.btn-save-memory');
-    btnSalvarHeader.forEach(btn => { btn.innerHTML = '<i data-lucide="loader-2" class="lucide-sm" style="animation: spin 1s linear infinite;"></i> Salvando...'; }); loadIcons();
-
-    let payload = { tipo: "salvar_config", configuracoes: { bancoUsuarios: bancoUsuarios, lojasConfig: lojasConfig, mapaEmojis: mapaEmojis, aparelhosPremium: aparelhosPremium, taxasCoparticipacao: taxasCoparticipacao, valoresComissao: valoresComissao } };
-    try { 
-        await fetch(URL_DA_SUA_API, { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "text/plain" } }); 
-        if(mostrarAviso) mostrarToast("💾 Alterações salvas com sucesso no banco!", "sucesso"); 
-    } catch (e) { 
-        if(mostrarAviso) mostrarToast("Erro ao salvar no banco. Verifique sua conexão.", "erro");
-        mostrarBotaoReconexao();
-    } finally { 
-        btnSalvarHeader.forEach(btn => { btn.innerHTML = '<i data-lucide="save" class="lucide-sm"></i> Salvar'; }); loadIcons(); 
-    }
-}
-
 function renderizarInputsFoco() {
     const container = document.getElementById('admin-foco-container'); const selSup = document.getElementById('seletor-foco-sup'); 
     if (!container || !selSup) return;
     let supId = selSup.value; let premiumSup = aparelhosPremium[supId] || aparelhosPremium["geral"] || {}; let taxaSup = taxasCoparticipacao[supId] || taxasCoparticipacao["geral"] || 25; let vComissaoSup = valoresComissao[supId] || valoresComissao["geral"] || {}; 
     let grupos = vComissaoSup.grupos || []; let aparelhosCfg = vComissaoSup.aparelhos || {}; let campanhasAtivas = vComissaoSup.campanhasPersonalizadas || [];
+    
+    let marcasConcorrentes = vComissaoSup.marcas_concorrentes || ["Samsung", "Motorola", "Outros"];
+
     document.getElementById('input-taxa-copart').value = taxaSup;
 
     let htmlGrupos = '<div style="background: var(--bg-item); padding: 20px; border-radius: 16px; border: 1px solid var(--border-color); margin-top: 20px; text-align: left;"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;"><span style="font-size: 15px; font-weight: bold; color: #8b5cf6;"><i data-lucide="layers" class="lucide-sm"></i> Categorias de Comissionamento</span><button class="btn-acao btn-enviar" style="padding: 8px 14px; font-size: 12px; width: auto; background: #8b5cf6;" onclick="adminAddGrupo()"><i data-lucide="plus"></i> Nova Categoria</button></div>';
@@ -499,6 +568,17 @@ function renderizarInputsFoco() {
         htmlCampanhas += `<div class="linha-campanha-dinamica" style="background: var(--bg-container); padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 10px;"><div style="display: flex; gap: 10px; flex-wrap: wrap;"><select class="camp-aparelho" style="margin-bottom:0; padding:10px; flex:1;" onchange="atualizarListaPremiumGlobal()">${optionsAparelhos}</select><select class="camp-promotor" style="margin-bottom:0; padding:10px; flex:1;" onchange="atualizarListaPremiumGlobal()">${optionsPromotores}</select><button class="btn-excluir" style="padding: 10px;" onclick="removerLinhaCampanha(${index})"><i data-lucide="trash-2" style="margin:0;"></i></button></div><div style="display: flex; gap: 10px; flex-wrap: wrap;"><div style="display: flex; align-items:center; gap:6px; flex:1;"><span style="font-size:11px;">Qtd Min.</span><input type="number" class="camp-qtd" value="${camp.qtdMinima || 1}" style="margin-bottom:0; padding:10px;" onchange="atualizarListaPremiumGlobal()"></div><div style="display: flex; align-items:center; gap:6px; flex:1;"><span style="font-size:11px;">Bônus(R$)</span><input type="number" class="camp-valor" value="${camp.bonus || 0}" style="margin-bottom:0; padding:10px;" onchange="atualizarListaPremiumGlobal()"></div></div></div>`;
     }); 
     htmlCampanhas += '</div></div>';
+
+    let htmlMarcas = `<div style="background: var(--bg-item); padding: 20px; border-radius: 16px; border: 1px solid var(--border-color); margin-top: 20px; text-align: left;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <span style="font-size: 14px; font-weight: bold; color: #3b82f6;"><i data-lucide="pie-chart" class="lucide-sm"></i> Marcas da Concorrência</span>
+            <button class="btn-acao btn-enviar" style="background-color: #3b82f6; padding: 8px 14px; font-size: 12px; width: auto;" onclick="adminAddMarcaConcorrente()"><i data-lucide="plus"></i> Nova Marca</button>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">`;
+    marcasConcorrentes.forEach((marca, idx) => {
+        htmlMarcas += `<span style="background: var(--bg-container); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 8px; color: var(--cor-texto);">${marca} <i data-lucide="x" class="lucide-sm" style="cursor:pointer; color:#ef4444;" onclick="adminRemoverMarcaConcorrente(${idx})"></i></span>`;
+    });
+    htmlMarcas += `</div><span style="font-size: 11px; color: var(--cor-secundaria); display: block; margin-top: 10px;">Essas marcas aparecerão no aplicativo dos seus promotores na hora de lançar o fechamento.</span></div>`;
 
     let htmlAparelhos = '<div style="font-size: 15px; font-weight: bold; margin: 25px 0 15px 0; text-align: left;"><i data-lucide="smartphone" class="lucide-sm" style="color:var(--primary);"></i> Enquadramento e Valores por Aparelho:</div><div style="display: flex; flex-direction: column; gap: 15px;">';
     for (let ap in mapaEmojis) {
@@ -522,7 +602,7 @@ function renderizarInputsFoco() {
         htmlAparelhos += `</div></div>`;
     }
     htmlAparelhos += '</div>';
-    container.innerHTML = htmlGrupos + htmlCampanhas + htmlAparelhos; loadIcons();
+    container.innerHTML = htmlGrupos + htmlCampanhas + htmlMarcas + htmlAparelhos; loadIcons();
 }
 
 function adminAddGrupo() { let selSup = document.getElementById('seletor-foco-sup').value; if (!valoresComissao[selSup]) valoresComissao[selSup] = {}; if (!valoresComissao[selSup].grupos) valoresComissao[selSup].grupos = []; valoresComissao[selSup].grupos.push({ id: 'g' + Date.now(), nome: 'Nova Categoria', niveis: [{ meta: 1 }] }); renderizarInputsFoco(); atualizarListaPremiumGlobal(); }
@@ -694,7 +774,6 @@ function adminAbrirModalLojas(login) {
     loadIcons(); 
 }
 
-// ATIVADOR DO PWA
 if ('serviceWorker' in navigator) { 
     window.addEventListener('load', () => { 
         navigator.serviceWorker.register('./sw.js')
@@ -702,12 +781,7 @@ if ('serviceWorker' in navigator) {
         .catch(err => { console.log('Erro no Service Worker', err); }); 
     }); 
 }
-// =========================================================================
-// OVERRIDES FINAIS - COLAR NO FINAL DO ARQUIVO APP.JS
-// Substitui as antigas requisições do Google pelas consultas do Supabase
-// =========================================================================
 
-// 1. CARREGAR ACOMPANHAMENTO (Vendas da Nuvem)
 async function carregarDadosDoBanco() {
     const div = document.getElementById("lista-agrupada");
     let btn = document.getElementById("btn-atualizar-acomp");
@@ -736,61 +810,6 @@ async function carregarDadosDoBanco() {
     }
 }
 
-// 2. ABRIR DASHBOARD E GRÁFICOS
-function abrirDashboard() { 
-    mudarTela('tela-dashboard'); 
-    let selSup = document.getElementById('filtro-supervisor-dash'); 
-    window.confettiDisparado = false; 
-    
-    if (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master") { 
-        document.getElementById('container-filtro-supervisor-dash').style.display = "block"; 
-        document.getElementById('container-filtro-promotor-dash').style.display = "block"; 
-        if(selSup.options.length <= 1) { 
-            let htmlOp = '<option value="todos">Todas as Regiões (Geral)</option>'; 
-            for(let k in bancoUsuarios) { 
-                if (bancoUsuarios[k].cargo === "supervisor") { 
-                    if (podeGerenciar(usuarioLogado, k)) { htmlOp += `<option value="${k}">Equipe: ${bancoUsuarios[k].nome || k}</option>`; } 
-                } 
-            } 
-            selSup.innerHTML = htmlOp; 
-        } 
-    } else if (usuarioLogado.cargo === "supervisor") { 
-        document.getElementById('container-filtro-supervisor-dash').style.display = "none"; 
-        document.getElementById('container-filtro-promotor-dash').style.display = "block"; 
-    } else { 
-        document.getElementById('container-filtro-supervisor-dash').style.display = "none"; 
-        document.getElementById('container-filtro-promotor-dash').style.display = "none"; 
-    } 
-    
-    if (document.getElementById('filtro-promotor-dash').options.length <= 1) { atualizarFiltroPromotorDash(); } 
-    document.getElementById("total-comissao-geral").innerText = "R$ ****"; 
-    document.getElementById("icone-olho-comissao").innerHTML = '<i data-lucide="eye" style="margin:0;"></i>'; 
-    loadIcons(); 
-    
-    document.getElementById("total-vendas-geral").innerText = "..."; 
-    
-    // NOVA LÓGICA DO SUPABASE AQUI:
-    supabaseClient.from('vendas').select('*').neq('status', 'Cancelado').then(({ data, error }) => {
-        if (error) throw error;
-        let dados = data.map(row => ({
-            Vendedor: `[${row.loja}] ${row.vendedor}`,
-            Aparelhos: row.aparelhos_vendidos,
-            Data: row.data_venda
-        }));
-        dadosAcompanhamentoGlobal = dados; 
-        gerarGraficos(dados);
-    }).catch(e => { 
-        console.error(e);
-        document.getElementById("total-vendas-geral").innerText = "Erro!"; 
-        mostrarBotaoReconexao(); 
-    }).finally(() => { 
-        let icone = document.getElementById('icon-refresh-dash'); 
-        if(icone) icone.style.animation = "none"; 
-        loadIcons(); 
-    }); 
-}
-
-// 3. CARREGAR ESTOQUE
 async function carregarEstoqueDoBanco() {
     let btn = document.getElementById("btn-atualizar-estoque");
     if(btn) btn.innerHTML = '<i data-lucide="loader-2" style="animation: spin 2s linear infinite;"></i> Atualizando...';
@@ -817,7 +836,6 @@ async function carregarEstoqueDoBanco() {
     }
 }
 
-// 4. LANÇAR NOVA VENDA (Já envia para o Supabase e desconta do Estoque)
 async function enviarParaBanco() {
     if (!navigator.onLine) { mostrarToast("Sem internet!", "erro"); mostrarBotaoReconexao(); return; }
     if (pendenciasVendaMultipla.length === 0) return;
@@ -844,11 +862,9 @@ async function enviarParaBanco() {
     });
 
     try {
-        // Insere as vendas
         const { error: errV } = await supabaseClient.from('vendas').insert(vendasInsert);
         if (errV) throw errV;
 
-        // Desconta do Estoque
         for (let apNome in contagemEstoque) {
              const { data: estItem } = await supabaseClient.from('estoque').select('*').eq('loja', lojaAtual).eq('aparelho', apNome).single();
              if (estItem) {
@@ -872,7 +888,6 @@ async function enviarParaBanco() {
     }
 }
 
-// 5. ATUALIZAR ESTOQUE MANUAL
 async function executarEnvioEstoque(motivoSelecionado) {
     if (!navigator.onLine) { mostrarToast("Sem internet!", "erro"); mostrarBotaoReconexao(); return; }
     const btn = document.getElementById("btn-enviar-estoque");
@@ -907,7 +922,6 @@ async function executarEnvioEstoque(motivoSelecionado) {
     }
 }
 
-// 6. HISTÓRICO GERAL
 async function carregarHistoricoDoBanco(forcarNuvem = false) {
     const div = document.getElementById("lista-historico");
     if (!forcarNuvem && dadosHistoricoGlobal.length > 0) { renderizarListaHistorico(); return; }
@@ -933,7 +947,6 @@ async function carregarHistoricoDoBanco(forcarNuvem = false) {
     }
 }
 
-// 7. SALVAR CONFIGURAÇÕES GLOBAIS NO ADMIN
 async function salvarConfiguracoesGlobais(mostrarAviso = true) {
     if (!navigator.onLine) { mostrarToast("Sem conexão.", "erro"); return; }
     let btnSalvarHeader = document.querySelectorAll('.btn-save-memory');
@@ -957,4 +970,415 @@ async function salvarConfiguracoesGlobais(mostrarAviso = true) {
         btnSalvarHeader.forEach(btn => { btn.innerHTML = '<i data-lucide="save" class="lucide-sm"></i> Salvar'; });
         loadIcons();
     }
+}
+
+function compartilharDashboard() {
+    mostrarToast("Preparando o dashboard para a foto...", "info");
+    let btnShare = document.querySelector('button[title="Compartilhar Print"]');
+    if(btnShare) btnShare.innerHTML = '<i data-lucide="loader-2" style="animation: spin 1s linear infinite; margin: 0;"></i>';
+    loadIcons();
+
+    let divDash = document.getElementById("tela-dashboard");
+    let corFundo = document.body.classList.contains('dark-mode') ? '#050a08' : '#f1f5f9';
+
+    let wrappersScroll = divDash.querySelectorAll('div[style*="overflow-x: auto"]');
+    let estilosOriginais = [];
+
+    wrappersScroll.forEach((wrap) => {
+        estilosOriginais.push({
+            overflowX: wrap.style.overflowX,
+            width: wrap.style.width
+        });
+        wrap.style.overflowX = 'visible';
+        wrap.style.width = wrap.scrollWidth + 'px'; 
+    });
+
+    setTimeout(() => {
+        html2canvas(divDash, {
+            backgroundColor: corFundo,
+            scale: 1, 
+            useCORS: true,
+            logging: false
+        }).then(canvas => {
+            let imgData = canvas.toDataURL("image/png");
+            let link = document.createElement('a');
+            link.download = `Resultados_OPPO_${new Date().toLocaleDateString('pt-BR').replace(/\//g,'-')}.png`;
+            link.href = imgData;
+            link.click();
+            mostrarToast("Foto salva com sucesso!", "sucesso");
+        }).catch(e => {
+            mostrarToast("Erro ao gerar imagem.", "erro");
+            console.error(e);
+        }).finally(() => {
+            wrappersScroll.forEach((wrap, i) => {
+                wrap.style.overflowX = estilosOriginais[i].overflowX;
+                wrap.style.width = estilosOriginais[i].width;
+            });
+            
+            if (chartCoparticipacao) chartCoparticipacao.resize();
+            if (chartCapa) chartCapa.resize();
+            if (chartLojas) chartLojas.resize();
+            if (chartModelos) chartModelos.resize();
+            if (typeof chartShareGlobal !== 'undefined' && chartShareGlobal) chartShareGlobal.resize();
+
+            if(btnShare) btnShare.innerHTML = '<i data-lucide="camera" style="margin: 0;"></i>';
+            loadIcons();
+        });
+    }, 800); 
+}
+
+function baixarRelatorioAcomp() {
+    if (dadosAcompanhamentoGlobal.length === 0) return mostrarToast("Sem dados para exportar.", "alerta");
+    let csv = "\uFEFFVendedor;Aparelhos Vendidos;Data;Status\n";
+    dadosAcompanhamentoGlobal.forEach(r => {
+        let vend = r.Vendedor ? r.Vendedor.replace(/;/g, ',').replace(/\n/g, ' ') : "";
+        let apar = r.Aparelhos ? r.Aparelhos.replace(/;/g, ',').replace(/\n/g, ' ') : "";
+        let dt = r.Data ? new Date(r.Data).toLocaleString('pt-BR') : "";
+        let st = r.Status || "Realizado";
+        csv += `${vend};${apar};${dt};${st}\n`;
+    });
+    let blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    let link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `Acompanhamento_OPPO_${new Date().toLocaleDateString('pt-BR').replace(/\//g,'-')}.csv`; link.click();
+    mostrarToast("Download concluído!", "sucesso");
+}
+
+function baixarRelatorioHistorico() {
+    if (dadosHistoricoGlobal.length === 0) return mostrarToast("Sem dados para exportar.", "alerta");
+    let csv = "\uFEFFTipo;Data;Promotor;Status;Detalhes\n";
+    dadosHistoricoGlobal.forEach(r => {
+        let tipo = r.Tipo || "";
+        let dt = r.Data ? new Date(r.Data).toLocaleString('pt-BR') : "";
+        let prom = r.Promotor || "";
+        let st = r.Status || "Realizado";
+        let det = r.Detalhe ? r.Detalhe.replace(/;/g, ',').replace(/\n/g, ' ') : "";
+        csv += `${tipo};${dt};${prom};${st};${det}\n`;
+    });
+    let blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    let link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `Auditoria_OPPO_${new Date().toLocaleDateString('pt-BR').replace(/\//g,'-')}.csv`; link.click();
+    mostrarToast("Download de Auditoria concluído!", "sucesso");
+}
+
+function setFiltroDataRapido(tipo) {
+    let dtInicio = document.getElementById('filtro-data-inicio-historico');
+    let dtFim = document.getElementById('filtro-data-fim-historico');
+    let hoje = new Date();
+    const formataData = (d) => { let mes = '' + (d.getMonth() + 1); let dia = '' + d.getDate(); let ano = d.getFullYear(); if (mes.length < 2) mes = '0' + mes; if (dia.length < 2) dia = '0' + dia; return [ano, mes, dia].join('-'); };
+    if (tipo === 'limpar') { dtInicio.value = ""; dtFim.value = ""; } 
+    else if (tipo === 'hoje') { dtInicio.value = formataData(hoje); dtFim.value = formataData(hoje); } 
+    else if (tipo === 'ontem') { let ontem = new Date(hoje); ontem.setDate(hoje.getDate() - 1); dtInicio.value = formataData(ontem); dtFim.value = formataData(ontem); } 
+    else if (tipo === 'semana') { let inicioSemana = new Date(hoje); let day = inicioSemana.getDay(); let diff = inicioSemana.getDate() - day + (day === 0 ? -6 : 1); inicioSemana.setDate(diff); dtInicio.value = formataData(inicioSemana); dtFim.value = formataData(hoje); } 
+    else if (tipo === 'mes') { let inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1); let fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0); dtInicio.value = formataData(inicioMes); dtFim.value = formataData(fimMes); }
+    aplicarFiltroHistorico();
+}
+
+function abrirModalFechamento() {
+    let selLoja = document.getElementById('select-loja-share');
+    let htmlLojas = '';
+
+    let lojas = [];
+    if (usuarioLogado.cargo === "promotor") {
+        lojas = usuarioLogado.lojasPermitidas || [];
+        if (typeof lojas === 'string') { try { lojas = JSON.parse(lojas); } catch(e) { lojas = [lojas]; } }
+    } else if (usuarioLogado.cargo === "supervisor" && typeof getLojasDaRegiao === "function") {
+        lojas = getLojasDaRegiao(usuarioLogado.id);
+    } else {
+        lojas = Object.keys(lojasConfig);
+    }
+
+    if (!lojas || lojas.length === 0) return mostrarToast("Nenhuma loja encontrada na sua região.", "alerta");
+    
+    lojas.sort().forEach(l => { 
+        let nomePromotor = getPromotorDaLoja(l); 
+        htmlLojas += `<option value="${l}">${l} (👤 ${nomePromotor})</option>`; 
+    });
+    selLoja.innerHTML = htmlLojas;
+
+    let supId = usuarioLogado.criadoPor || "geral";
+    if (usuarioLogado.cargo === "supervisor") supId = usuarioLogado.id;
+    let vComissao = valoresComissao[supId] || valoresComissao["geral"] || {};
+    let marcas = vComissao.marcas_concorrentes || ["Samsung", "Motorola", "Outros"];
+    
+    let containerMarcas = document.getElementById('container-inputs-concorrencia');
+    let htmlInputs = "";
+    marcas.forEach((marca, idx) => {
+        htmlInputs += `
+        <div>
+            <span style="font-size: 11px; font-weight: bold; color: var(--cor-secundaria);">${marca}</span>
+            <input type="number" id="input-concorrente-${idx}" data-marca="${marca}" placeholder="Qtd" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); text-align: center; margin: 0;">
+        </div>`;
+    });
+    if (containerMarcas) containerMarcas.innerHTML = htmlInputs;
+
+    document.getElementById('modal-fechamento-share').classList.add('ativo');
+    loadIcons();
+}
+
+async function enviarFechamentoShare() {
+    if (!navigator.onLine) { mostrarToast("Sem internet!", "erro"); return; }
+    
+    let loja = document.getElementById('select-loja-share').value;
+    if (!loja) return mostrarToast("Selecione uma loja.", "alerta");
+    
+    let totalConcorrencia = 0;
+    let objConcorrentes = {};
+    
+    let inputs = document.querySelectorAll('[id^="input-concorrente-"]');
+    inputs.forEach(inp => {
+        let qtd = parseInt(inp.value) || 0;
+        let marca = inp.getAttribute('data-marca');
+        objConcorrentes[marca] = qtd;
+        totalConcorrencia += qtd;
+    });
+
+    if (totalConcorrencia === 0) return mostrarToast("Preencha as vendas da concorrência.", "alerta");
+
+    const btn = document.getElementById("btn-salvar-share");
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader-2" style="animation: spin 1s linear infinite;"></i> Salvando...';
+    loadIcons();
+
+    let payload = {
+        data_fechamento: new Date().toISOString().split('T')[0],
+        loja: loja,
+        promotor_login: usuarioLogado.id,
+        vendas_oppo: 0, 
+        vendas_total_loja: totalConcorrencia, 
+        criado_por_supervisor: usuarioLogado.criadoPor,
+        concorrentes_dados: objConcorrentes 
+    };
+
+    try {
+        const { error } = await supabaseClient.from('market_share').insert([payload]);
+        if (error) throw error;
+        mostrarToast("Fechamento registrado com sucesso!", "sucesso");
+        document.getElementById('modal-fechamento-share').classList.remove('ativo');
+    } catch (e) {
+        console.error("Erro no Share:", e);
+        mostrarToast("Erro ao registrar fechamento.", "erro");
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'Salvar Fechamento';
+        loadIcons();
+    }
+}
+
+async function carregarGraficosShare() {
+    if (!navigator.onLine) { mostrarToast("Sem conexão.", "erro"); return; }
+    mostrarToast("Calculando inteligência de mercado...", "info");
+    
+    let mesDash = document.getElementById("seletor-mes-dash").value;
+    let y, m;
+    let hoje = new Date();
+    
+    if (mesDash) {
+        let partes = mesDash.split('/');
+        m = parseInt(partes[0], 10);
+        y = parseInt(partes[1], 10);
+    } else {
+        m = hoje.getMonth() + 1;
+        y = hoje.getFullYear();
+    }
+    
+    let dtInicioVal = [y, String(m).padStart(2,'0'), '01'].join('-');
+    let dtFimVal = [y, String(m).padStart(2,'0'), new Date(y, m, 0).getDate()].join('-');
+
+    try {
+        let query = supabaseClient.from('market_share').select('*').gte('data_fechamento', dtInicioVal).lte('data_fechamento', dtFimVal);
+            
+        let selSup = document.getElementById('filtro-supervisor-dash');
+        let selProm = document.getElementById('filtro-promotor-dash');
+        let selLoja = document.getElementById('filtro-loja-dash');
+        
+        let escopoTexto = "no mercado analisado"; 
+
+        if (selSup && selSup.style.display !== "none" && selSup.value !== "todos") {
+             query = query.eq('criado_por_supervisor', selSup.value); 
+             escopoTexto = `na equipe filtrada`;
+        }
+        if (selProm && selProm.style.display !== "none" && selProm.value !== "todos") {
+             query = query.eq('promotor_login', selProm.value); 
+             escopoTexto = `nas lojas do promotor`;
+        }
+        if (selLoja && selLoja.value !== "todas") {
+             query = query.eq('loja', selLoja.value);
+             escopoTexto = `nesta loja`; 
+        }
+        
+        const { data: dbShare, error } = await query;
+        if (error) throw error;
+
+        let resumoGlobal = { oppo: 0, concorrentes: {}, total: 0 };
+        let resumoLojas = {};
+
+        if (typeof dadosAcompanhamentoGlobal !== 'undefined') {
+            dadosAcompanhamentoGlobal.forEach(row => {
+                let match = (row.Vendedor || "").match(/^\[(.*?)\]/);
+                let lojaNome = match ? match[1] : "Outras";
+                
+                if (selLoja && selLoja.value !== "todas" && lojaNome !== selLoja.value) return;
+
+                let qtd = (row.Aparelhos || "").split("||").filter(x => x.trim() !== "").length;
+                resumoGlobal.oppo += qtd;
+                resumoGlobal.total += qtd; 
+                
+                if (!resumoLojas[lojaNome]) resumoLojas[lojaNome] = { oppo: 0, total: 0 };
+                resumoLojas[lojaNome].oppo += qtd;
+                resumoLojas[lojaNome].total += qtd;
+            });
+        }
+
+        if (dbShare) {
+            dbShare.forEach(row => {
+                let dadosConc = row.concorrentes_dados || {};
+                if (Object.keys(dadosConc).length === 0 && (row.vendas_samsung > 0 || row.vendas_motorola > 0 || row.vendas_outros > 0)) {
+                    dadosConc = { "Samsung": row.vendas_samsung || 0, "Motorola": row.vendas_motorola || 0, "Outros": row.vendas_outros || 0 };
+                }
+
+                let totalConcLinha = 0;
+                for (let marca in dadosConc) {
+                    let qtd = dadosConc[marca];
+                    resumoGlobal.concorrentes[marca] = (resumoGlobal.concorrentes[marca] || 0) + qtd;
+                    totalConcLinha += qtd;
+                }
+                
+                resumoGlobal.total += totalConcLinha;
+                if (!resumoLojas[row.loja]) resumoLojas[row.loja] = { oppo: 0, total: 0 };
+                resumoLojas[row.loja].total += totalConcLinha;
+            });
+        }
+
+        if (resumoGlobal.total === 0) {
+            if (chartShareGlobal) chartShareGlobal.destroy();
+            document.getElementById('texto-resumo-share').innerHTML = "Nenhum dado registrado neste filtro.";
+            document.getElementById('lista-temperatura-lojas').innerHTML = "<div class='mensagem-vazia'>Sem dados.</div>";
+            return;
+        }
+
+        renderizarPizzaShare(resumoGlobal, escopoTexto); 
+        renderizarTermometroLojas(resumoLojas);
+
+    } catch (e) {
+        console.error("Erro no cálculo do Share:", e);
+        mostrarToast("Erro ao carregar inteligência.", "erro");
+    }
+}
+
+function renderizarPizzaShare(resumoGlobal, escopoTexto) {
+    if (chartShareGlobal) chartShareGlobal.destroy();
+    
+    let pctOppo = resumoGlobal.total > 0 ? ((resumoGlobal.oppo / resumoGlobal.total) * 100).toFixed(1) : 0;
+    
+    // Texto Dinâmico do Filtro
+    document.getElementById('texto-resumo-share').innerHTML = `A OPPO domina <strong style="font-size: 18px; color: #10b981;">${pctOppo}%</strong> ${escopoTexto}!`;
+
+    let corTexto = document.body.classList.contains('dark-mode') ? '#ffffff' : '#475569';
+
+    // Montagem dinâmica do gráfico
+    let labels = ['OPPO'];
+    let data = [resumoGlobal.oppo];
+    let bgColors = ['#10b981']; 
+    
+    let paleta = ['#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4', '#64748b'];
+    let cIdx = 0;
+
+    let concOrdenados = Object.keys(resumoGlobal.concorrentes).sort((a,b) => resumoGlobal.concorrentes[b] - resumoGlobal.concorrentes[a]);
+
+    concOrdenados.forEach(marca => {
+        labels.push(marca);
+        data.push(resumoGlobal.concorrentes[marca]);
+        bgColors.push(paleta[cIdx % paleta.length]);
+        cIdx++;
+    });
+
+    const ctx = document.getElementById('graficoMarketShare').getContext('2d');
+    chartShareGlobal = new Chart(ctx, {
+        type: 'doughnut',
+        plugins: [ChartDataLabels],
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: bgColors,
+                borderWidth: 1,
+                borderColor: document.body.classList.contains('dark-mode') ? '#050a08' : '#ffffff'
+            }]
+        },
+        options: {
+            maintainAspectRatio: false,
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom', labels: { color: corTexto, font: { weight: 'bold' } } },
+                datalabels: {
+                    color: '#fff',
+                    font: { weight: 'bold', size: 12 },
+                    formatter: (value, ctx) => {
+                        let total = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                        if (total === 0 || value === 0) return "";
+                        let percentage = ((value / total) * 100).toFixed(1) + "%";
+                        return [`${value} un`, percentage];
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Sub-função: Termômetro de Lojas
+function renderizarTermometroLojas(resumoLojas) {
+    const div = document.getElementById('lista-temperatura-lojas');
+    let listaLojas = [];
+    
+    for (let nomeLoja in resumoLojas) {
+        let r = resumoLojas[nomeLoja];
+        if (r.total === 0) continue;
+        let pct = (r.oppo / r.total) * 100;
+        listaLojas.push({ nome: nomeLoja, oppo: r.oppo, total: r.total, pct: pct });
+    }
+    
+    if (listaLojas.length === 0) {
+        div.innerHTML = "<div class='mensagem-vazia'>Sem dados de lojas neste período.</div>";
+        return;
+    }
+
+    // Ordena mostrando as lojas mais fracas primeiro (para foco do supervisor)
+    listaLojas.sort((a,b) => a.pct - b.pct);
+    
+    let html = "";
+    listaLojas.forEach(l => {
+        let corStatus, iconeStatus, bgAlerta;
+        
+        // Define as cores dinamicamente dependendo da "Fatia do Bolo"
+        if (l.pct >= 35) {
+            corStatus = "#10b981"; // Verde (Dominado)
+            iconeStatus = "trending-up";
+            bgAlerta = "rgba(16, 185, 129, 0.05)";
+        } else if (l.pct >= 15) {
+            corStatus = "#f59e0b"; // Amarelo (Atenção)
+            iconeStatus = "thermometer";
+            bgAlerta = "rgba(245, 158, 11, 0.05)";
+        } else {
+            corStatus = "#ef4444"; // Vermelho (Crítico)
+            iconeStatus = "alert-triangle";
+            bgAlerta = "rgba(239, 68, 68, 0.1)";
+        }
+
+        html += `
+        <div style="background: ${bgAlerta}; border: 1px solid var(--border-color); border-radius: 12px; padding: 15px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+            <div style="text-align: left; flex: 1;">
+                <strong style="color: var(--cor-texto); font-size: 15px;">${l.nome}</strong>
+                <span style="display: block; font-size: 12px; color: var(--cor-secundaria);">OPPO: ${l.oppo} | Total da Loja: ${l.total} un</span>
+            </div>
+            <div style="text-align: right; color: ${corStatus}; display: flex; flex-direction: column; align-items: flex-end;">
+                <span style="font-size: 22px; font-weight: 900; letter-spacing: -1px; display: flex; align-items: center; gap: 4px;">
+                    <i data-lucide="${iconeStatus}" style="margin:0; color: ${corStatus}; width: 20px; height: 20px;"></i>
+                    ${l.pct.toFixed(1)}%
+                </span>
+                <span style="font-size: 10px; font-weight: bold; text-transform: uppercase;">Share</span>
+            </div>
+        </div>
+        `;
+    });
+    
+    div.innerHTML = html;
+    loadIcons();
 }
