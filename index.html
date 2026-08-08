@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portal OPPO - Premium</title>
+<link rel="manifest" href="manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Portal OPPO">
+<meta name="theme-color" content="#050a08">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+
+<!-- CSS EXTERNO -->
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="toast-container"></div>
+<div id="painel-erro-conexao">
+    <div style="display: flex; align-items: center; justify-content: center; gap: 8px; color: white; font-weight: bold; font-size: 14px; margin-bottom: 8px;">
+        <i data-lucide="wifi-off" class="lucide-sm"></i> Sem conexão com a nuvem
+    </div>
+    <button class="btn-sistema" style="background: white; color: #ef4444 !important; margin-bottom: 0; padding: 10px; font-size: 14px; border-radius: 10px; font-weight: bold; box-shadow: none;" onclick="tentarReconectarAgora()">
+        <i data-lucide="refresh-cw"></i> Tentar Sincronizar Novamente
+    </button>
+</div>
+
+<div id="tela-loading" style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; background: var(--bg-fundo); position: fixed; top: 0; left: 0; width: 100%; z-index: 9999;">
+    <i data-lucide="loader-2" style="width: 54px; height: 54px; color: var(--primary); animation: spin 2s linear infinite; margin-bottom: 20px;"></i>
+    <h2 style="color: var(--primary); font-weight: 800;">Portal OPPO</h2>
+    <h3 style="color: var(--cor-secundaria);">Conectando à Nuvem...</h3>
+</div>
+
+<nav id="bottom-nav-bar" class="bottom-nav">
+    <div class="nav-item ativo" id="nav-home" onclick="navTo('tela-menu', this)"><i data-lucide="home"></i><span>Início</span></div>
+    <div class="nav-item" id="nav-venda" onclick="navAction('venda', this)"><i data-lucide="shopping-bag"></i><span>Vender</span></div>
+    <div class="nav-item" id="nav-acomp" onclick="navAction('acomp', this)"><i data-lucide="bar-chart-2"></i><span>Acomp.</span></div>
+    <div class="nav-item" id="nav-estoque" onclick="navAction('estoque', this)"><i data-lucide="package"></i><span>Estoque</span></div>
+    <div class="nav-item" id="nav-admin" onclick="navAction('admin', this)"><i data-lucide="settings"></i><span>Ajustes</span></div>
+</nav>
+
+<div id="modal-cancelar-venda" class="modal-overlay">
+    <div class="modal-content">
+        <h3 style="color: #ef4444;"><i data-lucide="alert-triangle"></i> Cancelar Venda</h3>
+        <p>Tem certeza que deseja cancelar e estornar esta venda? O estoque será reposto em +1 automaticamente.</p>
+        <div style="margin-top: 15px; text-align: left;">
+            <label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria);">Confirme sua senha (Supervisor):</label>
+            <input type="password" id="senha-confirmacao-cancelamento" placeholder="Digite sua senha" style="border-color: #ef4444;">
+        </div>
+        <div class="botoes-acao">
+            <button class="btn-acao btn-limpar" onclick="fecharModalCancelarVenda()">Voltar</button>
+            <button class="btn-acao btn-enviar" style="background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);" onclick="validarECancelarVenda()">Confirmar Estorno</button>
+        </div>
+    </div>
+</div>
+
+<div id="modal-confirm-mostruario" class="modal-overlay">
+    <div class="modal-content">
+        <h3 id="titulo-confirm-mostruario" style="color: #ef4444;"><i data-lucide="alert-triangle"></i> Atenção</h3>
+        <p id="texto-confirm-mostruario"></p>
+        <div class="botoes-acao">
+            <button class="btn-acao btn-limpar" onclick="fecharModalConfirmMostruario()">Cancelar</button>
+            <button class="btn-acao btn-enviar" style="background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);" onclick="executarRemoverMostruario()">Confirmar</button>
+        </div>
+    </div>
+</div>
+
+<div id="modal-prompt-mostruario" class="modal-overlay">
+    <div class="modal-content">
+        <h3 id="titulo-prompt-mostruario"><i data-lucide="tag"></i> Marcar Mostruário</h3>
+        <p id="texto-prompt-mostruario"></p>
+        <input type="text" id="input-obs-mostruario" placeholder="Digite o IMEI ou Obs. (Opcional)">
+        <div class="botoes-acao">
+            <button class="btn-acao btn-limpar" onclick="fecharModalPromptMostruario()">Cancelar</button>
+            <button class="btn-acao btn-enviar" onclick="executarAddMostruario()">Confirmar</button>
+        </div>
+    </div>
+</div>
+
+<div id="modal-motivo-estoque" class="modal-overlay">
+    <div class="modal-content">
+        <h3 style="color: var(--primary); margin-bottom: 10px; font-size: 22px;"><i data-lucide="clipboard-check"></i> Auditoria</h3>
+        <p style="color: var(--cor-secundaria); font-size: 13px; margin-bottom: 20px;">Para continuar, é obrigatório registrar o motivo da correção:</p>
+        <select id="select-motivo-estoque" style="width: 100%; padding: 14px; border-radius: 12px; border: 2px solid #f59e0b; font-weight: bold; margin-bottom: 25px; color: var(--cor-texto); background-color: var(--bg-input);">
+            <option value="Erro de Contagem no Sistema">Erro de Contagem no Sistema</option>
+            <option value="Lançamento indevido (Correção)">Lançamento indevido (Correção)</option>
+            <option value="Chegada / Entrada de Novos Aparelhos">Chegada / Entrada de Novos Aparelhos</option>
+            <option value="Peça Recolhida ou Transferida">Peça Recolhida ou Transferida</option>
+            <option value="Ajuste de Peça de Mostruário">Ajuste de Peça de Mostruário</option>
+            <option value="Furto / Divergência Desconhecida">Furto / Divergência Desconhecida</option>
+            <option value="Outros Motivos">Outros</option>
+        </select>
+        <div class="botoes-acao" style="gap: 15px;">
+            <button class="btn-acao btn-limpar" onclick="document.getElementById('modal-motivo-estoque').classList.remove('ativo');">Cancelar</button>
+            <button class="btn-acao btn-enviar" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);" onclick="confirmarEnvioEstoqueMotivo()">Confirmar Correção</button>
+        </div>
+    </div>
+</div>
+
+<div id="modal-gerenciar-equipe" class="modal-overlay">
+    <div class="modal-fullscreen-content">
+        <button onclick="fecharModalEquipe()" style="position: absolute; top: 15px; right: 15px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer;"><i data-lucide="x" class="lucide-sm" style="margin:0;"></i></button>
+        <h3 id="titulo-modal-equipe" style="margin-top: 0; margin-bottom: 20px; padding-right: 40px;"><i data-lucide="users"></i> Equipe</h3>
+        <div class="tabs-header">
+            <button class="tab-btn ativo equipe-tab-btn" onclick="switchTab('equipe-tab-promotores', 'equipe-tab')"><i data-lucide="user"></i> Promotores</button>
+            <button class="tab-btn equipe-tab-btn" onclick="switchTab('equipe-tab-lojas', 'equipe-tab')"><i data-lucide="store"></i> Lojas & Vends</button>
+        </div>
+        <div id="equipe-tab-promotores" class="equipe-tab-content" style="display: block;">
+            <input type="text" placeholder="🔍 Buscar promotor..." onkeyup="filtrarListaModal('item-modal-busca-promotor', this.value)" style="margin-bottom: 15px; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--cor-texto);">
+            <div id="lista-modal-promotores" style="max-height: 250px; overflow-y: auto; margin-bottom: 15px;"></div>
+            <div style="background: var(--bg-item); padding: 20px; border-radius: 16px; border: 1px solid var(--border-color);">
+                <strong style="font-size: 15px; color: #10b981; display: flex; align-items: center; margin-bottom: 15px;"><i data-lucide="user-plus"></i> Criar Novo Promotor</strong>
+                <div class="input-admin-row" style="margin-bottom: 8px;"><input type="text" id="modal-promotor-login" placeholder="Login"><input type="text" id="modal-promotor-nome" placeholder="Nome Completo"></div>
+                <div class="input-admin-row" style="margin-bottom: 8px;"><input type="text" id="modal-promotor-senha" placeholder="Senha Padrão"><input type="number" id="modal-promotor-meta" placeholder="Meta Individual Padrão"></div>
+                <div style="margin-bottom: 15px; background: var(--bg-container); padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); text-align: left;">
+                    <span style="font-size: 13px; font-weight: bold; color: #8b5cf6; display: flex; align-items: center; margin-bottom: 12px;"><i data-lucide="shield"></i> Permissões de Acesso:</span>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13px;">
+                        <label style="cursor: pointer;"><input type="checkbox" id="perm-vendas" checked> Lançar Vendas</label>
+                        <label style="cursor: pointer;"><input type="checkbox" id="perm-acomp" checked> Acompanhamento</label>
+                        <label style="cursor: pointer;"><input type="checkbox" id="perm-est-ver" checked> Ver Estoque</label>
+                        <label style="cursor: pointer;"><input type="checkbox" id="perm-est-edit" checked> Editar Estoque</label>
+                    </div>
+                </div>
+                <div style="margin-bottom: 15px; background: var(--bg-container); padding: 15px; border-radius: 12px; border: 1px solid var(--border-color);">
+                    <span style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria); display: block; margin-bottom: 10px;">Lojas Permitidas:</span>
+                    <div id="modal-promotor-lojas" style="display: grid; grid-template-columns: 1fr; gap: 10px; font-size: 13px; max-height: 150px; overflow-y: auto; text-align: left;"></div>
+                </div>
+                <button class="btn-sistema" style="width: 100%; padding:14px; border-radius:12px; font-size:15px; margin-bottom:0;" onclick="adminAddPromotorEquipe()"><i data-lucide="plus" style="margin-right:6px;"></i> Adicionar Promotor</button>
+            </div>
+        </div>
+        <div id="equipe-tab-lojas" class="equipe-tab-content" style="display: none;">
+            <input type="text" placeholder="🔍 Buscar loja..." onkeyup="filtrarListaModal('item-modal-busca-loja', this.value)" style="margin-bottom: 15px; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--cor-texto);">
+            <div id="lista-modal-lojas" style="max-height: 250px; overflow-y: auto; margin-bottom: 15px;"></div>
+            <div style="background: var(--bg-item); padding: 20px; border-radius: 16px; border: 1px solid var(--border-color); margin-bottom: 15px;">
+                <strong style="font-size: 15px; color: #10b981; display: flex; align-items: center; margin-bottom: 15px;"><i data-lucide="plus-circle"></i> Criar Nova Loja</strong>
+                <div class="input-admin-row" style="margin-bottom: 8px;"><input type="text" id="modal-loja-nome" placeholder="Nome da Loja" style="flex: 2;"><input type="number" id="modal-loja-capa" placeholder="Capa Total" style="flex: 1;"></div>
+                <button class="btn-sistema" style="width: 100%; padding:14px; border-radius:12px; font-size:15px; margin-bottom:0;" onclick="adminAddLojaEquipe()">Criar Loja</button>
+            </div>
+            <div style="background: var(--bg-item); padding: 20px; border-radius: 16px; border: 1px solid var(--border-color);">
+                <strong style="font-size: 15px; color: #f59e0b; display: flex; align-items: center; margin-bottom: 15px;"><i data-lucide="user-plus"></i> Adicionar Vendedores</strong>
+                <div class="input-admin-row" style="margin-bottom: 8px;"><select id="modal-select-loja"></select></div>
+                <div class="input-admin-row" style="margin-bottom: 8px;"><input type="text" id="modal-vendedor-nome" placeholder="Nomes separados por vírgula" style="width: 100%;"></div>
+                <button class="btn-sistema" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); width: 100%; padding:14px; border-radius:12px; font-size:15px; margin-bottom:0; box-shadow: 0 4px 10px rgba(245, 158, 11, 0.3);" onclick="adminAddVendedorEquipe()">Vincular Vendedor</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="modal-edicao" class="modal-overlay">
+    <div class="modal-content">
+        <h3 id="modal-edicao-titulo"><i data-lucide="edit"></i> Editar</h3>
+        <div id="modal-edicao-corpo" style="text-align: left; max-height: 300px; overflow-y: auto; margin-bottom: 20px; background: var(--bg-item); padding: 15px; border-radius: 12px; border: 1px solid var(--border-color);"></div>
+        <div class="botoes-acao">
+            <button class="btn-acao btn-limpar" onclick="fecharModalEdicao()"><i data-lucide="x"></i> Cancelar</button>
+            <button class="btn-acao btn-enviar" id="btn-salvar-edicao"><i data-lucide="check"></i> Confirmar</button>
+        </div>
+    </div>
+</div>
+
+<div id="modal-imei" class="modal-overlay">
+<div class="modal-content">
+<h3 id="modal-titulo-aparelho"><i data-lucide="smartphone"></i> Modelo</h3>
+<p>Deseja informar o IMEI deste aparelho?</p>
+<input type="number" id="input-imei" placeholder="Digite o IMEI (Opcional)">
+<div class="botoes-acao">
+<button class="btn-acao btn-limpar" onclick="confirmarImei(false)">Pular</button>
+<button class="btn-acao btn-enviar" onclick="confirmarImei(true)">Confirmar</button>
+</div>
+</div>
+</div>
+
+<div id="modal-senha" class="modal-overlay">
+<div class="modal-content">
+<h3><i data-lucide="lock"></i> Segurança da Conta</h3>
+<p id="texto-modal-senha">Sua senha atual é a padrão. Deseja alterá-la para maior segurança?</p>
+<div id="etapa-pergunta-senha" style="display: block;">
+<div class="botoes-acao">
+<button class="btn-acao btn-limpar" onclick="responderTrocaSenha(false)">Não</button>
+<button class="btn-acao btn-enviar" onclick="responderTrocaSenha(true)">Sim</button>
+</div>
+</div>
+<div id="etapa-formulario-senha" style="display: none; text-align: left;">
+<label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria);">Nova Senha:</label>
+<input type="password" id="nova-senha-1" placeholder="Digite a nova senha">
+<label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria);">Confirmar Nova Senha:</label>
+<input type="password" id="nova-senha-2" placeholder="Confirme a nova senha">
+<div class="botoes-acao" style="margin-top: 15px;">
+<button class="btn-acao btn-limpar" onclick="cancelarTrocaSenha()">Cancelar</button>
+<button class="btn-acao btn-enviar" id="btn-salvar-senha" onclick="salvarNovaSenha()">Salvar Nova Senha</button>
+</div>
+</div>
+</div>
+</div>
+
+<div class="container">
+    <div class="header-global" id="header-global">
+        <div id="header-view-home" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <div class="header-user-info">
+                <div class="header-avatar" id="header-avatar">U</div>
+                <div style="text-align: left;">
+                    <div style="font-size: 10px; color: var(--cor-secundaria); font-weight: bold;">PORTAL OPPO</div>
+                    <div style="font-size: 14px; font-weight: bold; color: var(--cor-texto);" id="header-nome">Usuário</div>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="btn-save-memory" onclick="salvarConfiguracoesGlobais(true)" title="Salvar Alterações no Banco"><i data-lucide="save" class="lucide-sm"></i> Salvar</button>
+                <button class="btn-header" onclick="toggleTema()"><i data-lucide="moon" id="icone-tema"></i></button>
+            </div>
+        </div>
+        <div id="header-view-back" style="display: none; align-items: center; justify-content: space-between; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <button class="btn-back-nav" onclick="navTo('tela-menu', document.getElementById('nav-home'))"><i data-lucide="arrow-left" style="width: 24px; height: 24px;"></i> <span id="header-title-sub">Título</span></button>
+                <button class="btn-save-memory" onclick="salvarConfiguracoesGlobais(true)" title="Salvar Alterações (Memory Card)"><i data-lucide="save" class="lucide-sm"></i> Salvar</button>
+            </div>
+            <div class="header-actions"><button class="btn-header" onclick="toggleTema()"><i data-lucide="moon" id="icone-tema-sub"></i></button></div>
+        </div>
+    </div>
+
+<div id="tela-login" class="tela ativa">
+    <div class="bg-watermark"></div>
+    <div class="login-content">
+        <div class="login-header">
+            <h2>Portal OPPO</h2>
+            <h3>Gestão e Inteligência de Vendas</h3>
+        </div>
+        <div class="login-inputs">
+            <input type="text" id="nome-usuario" placeholder="Usuário">
+            <input type="password" id="senha-usuario" placeholder="Senha">
+        </div>
+        <button class="btn-sistema" id="btn-login" style="margin-top:10px;" onclick="realizarLogin()"><i data-lucide="log-in" style="margin-right: 8px;"></i> Acessar Sistema</button>
+        <div class="login-footer">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/b/b8/OPPO_Logo.svg" alt="OPPO" class="logo-rodape-login">
+            <span class="assinatura-texto" style="font-size: 10px; color: var(--cor-secundaria); font-weight:bold;">POWERED BY GABRIEL SILVA</span>
+        </div>
+    </div>
+</div>
+
+<div id="tela-menu" class="tela">
+    <div style="background: var(--bg-card); padding: 25px; border-radius: 20px; border: 1px solid var(--border-color); margin-bottom: 25px; margin-top: 10px;">
+        <h4 style="margin-top: 0; margin-bottom: 20px; font-size: 16px;"><i data-lucide="zap"></i> Ações Rápidas</h4>
+        <button class="btn-sistema" id="btn-menu-venda" onclick="navAction('venda', document.getElementById('nav-venda'))" style="font-size: 18px; padding: 20px; margin-bottom: 15px;"><i data-lucide="plus-circle" class="lucide-lg"></i> Lançar Nova Venda</button>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <button class="btn-sistema" id="btn-dashboard" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); margin: 0; font-size: 14px; padding: 16px;" onclick="navAction('dashboard', document.getElementById('nav-acomp'))"><i data-lucide="bar-chart-2"></i> Metas</button>
+            <button class="btn-sistema" id="btn-menu-historico" style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); margin: 0; font-size: 14px; padding: 16px;" onclick="abrirHistorico('geral')"><i data-lucide="clock"></i> Histórico</button>
+            <button class="btn-sistema" id="btn-menu-auditoria" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); margin: 0; font-size: 14px; padding: 16px; grid-column: span 2;" onclick="abrirHistorico('estoque')"><i data-lucide="search"></i> Auditoria de Estoque</button>
+        </div>
+    </div>
+    <button class="btn-sistema btn-voltar" style="background: transparent; color: #ef4444 !important; box-shadow: none; border: 2px solid #ef4444; font-weight: bold;" onclick="fazerLogout()"><i data-lucide="log-out"></i> Sair do Sistema</button>
+</div>
+
+<div id="tela-promotores" class="tela"><div id="botoes-promotores-dinamicos"></div></div>
+<div id="tela-lojas" class="tela"><div id="botoes-lojas-dinamicos"></div></div>
+
+<div id="tela-venda" class="tela">
+<div class="card-padrao">
+<div class="card-promotor" style="margin-bottom:0; padding:0; border:none; box-shadow:none; background:transparent;">
+<i data-lucide="smartphone" style="width: 32px; height: 32px; color: var(--primary);"></i>
+<div class="info-promotor">
+<span class="label-promotor">RESPONSÁVEL</span>
+<span class="nome-promotor" id="nome-promotor-ativo">Carregando...</span>
+<span style="font-size:12px; font-weight:bold; color:var(--cor-texto);" id="titulo-loja-ativa">Loja</span>
+</div>
+</div>
+</div>
+<div class="painel-cards">
+<div class="instrucao-cards"><i data-lucide="user-check"></i> 1º Selecione o Vendedor:</div>
+<div id="grid-vendedores" class="seletor-promotores" style="margin-bottom: 25px;"></div>
+<div class="instrucao-cards"><i data-lucide="smartphone"></i> 2º Toque no aparelho vendido:</div>
+<div class="grid-aparelhos" id="grid-aparelhos"></div>
+</div>
+<div id="area-conferencia">
+<div style="font-size: 14px; font-weight: bold; color: var(--cor-texto); display: flex; align-items: center; gap: 6px;"><i data-lucide="check-circle"></i> Conferir seleção:</div>
+<div id="lista-pendentes" class="lista-pendentes"></div>
+<div class="botoes-acao">
+<button class="btn-acao btn-limpar" onclick="limparPendentes()"><i data-lucide="trash-2"></i> Corrigir</button>
+<button class="btn-acao btn-enviar" id="btn-enviar-venda" onclick="enviarParaBanco()"><i data-lucide="send"></i> Enviar</button>
+</div>
+</div>
+<button class="btn-sistema btn-voltar" id="btn-trocar-loja" style="margin-bottom: 10px; display:none; padding:12px; font-size:14px; font-weight:bold;"></button>
+</div>
+
+<div id="tela-acompanhamento" class="tela">
+<div id="seletor-promotores" class="seletor-promotores"></div>
+<div id="seletor-sub-promotores" class="seletor-promotores" style="display: none; padding-top: 0; margin-top: -10px; margin-bottom: 15px;"></div>
+<div class="controles-topo-acompanhamento">
+<select id="seletor-mes" class="seletor-mes" style="border-color: var(--primary);" onchange="carregarDadosDoBanco()"><option value="">Mês Atual</option></select>
+</div>
+<div style="display:flex;"><button class="btn-sistema" id="btn-atualizar-acomp" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); margin-bottom: 20px; width: calc(50% - 5px);" onclick="carregarDadosDoBanco()"><i data-lucide="refresh-cw"></i> Atualizar</button><button class="btn-sistema" id="btn-export-acomp" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); margin-bottom: 20px; margin-left: 10px; width: calc(50% - 5px);" onclick="baixarRelatorioAcomp()"><i data-lucide="download"></i> Excel</button></div>
+<div class="container-acompanhamento" id="lista-agrupada">Carregando dados da nuvem...</div>
+</div>
+
+<div id="tela-estoque" class="tela">
+<div id="seletor-promotores-estoque" class="seletor-promotores"></div>
+<button class="btn-sistema" id="btn-atualizar-estoque" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); margin-bottom: 15px;" onclick="carregarEstoqueDoBanco()"><i data-lucide="refresh-cw"></i> Atualizar Estoque</button>
+
+<div id="container-btn-conferencia-ok" style="display: none; margin-bottom: 15px;">
+    <button class="btn-sistema" id="btn-conferencia-ok" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); box-shadow: 0 8px 20px rgba(59, 130, 246, 0.25);" onclick="enviarConferenciaDiaria()">
+        <i data-lucide="check-square" class="lucide-lg"></i> Confirmar Conferência Diária
+    </button>
+</div>
+
+<div style="display: flex; gap: 10px; margin-bottom: 15px;">
+    <select id="filtro-loja-estoque" class="seletor-mes" style="margin-bottom: 0; flex: 1; border-color: var(--primary);" onchange="renderizarListaEstoque()">
+        <option value="todas">Todas as Lojas</option>
+    </select>
+    <input type="text" id="busca-estoque" placeholder="🔍 Buscar modelo..." style="margin-bottom: 0; flex: 1; border-color: var(--primary);" onkeyup="renderizarListaEstoque()">
+</div>
+
+<label style="font-size: 14px; color: var(--cor-secundaria); display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 20px; cursor: pointer; font-weight: 600;">
+    <input type="checkbox" id="check-mostrar-zerados" onchange="renderizarListaEstoque()" style="width: auto; margin:0;" checked> <i data-lucide="eye"></i> Mostrar modelos zerados
+</label>
+
+<div id="area-conferencia-estoque">
+    <div style="font-weight: bold; font-size: 15px; margin-bottom: 10px; color: var(--primary);"><i data-lucide="clipboard-check"></i> Conferir Alterações de Estoque:</div>
+    <div id="lista-pendentes-estoque"></div>
+    <div class="botoes-acao" style="margin-top: 15px;">
+        <button class="btn-acao btn-limpar" onclick="limparConferenciaEstoque()"><i data-lucide="x"></i> Corrigir</button>
+        <button class="btn-acao btn-enviar" id="btn-enviar-estoque" style="background: var(--primary-gradiente);" onclick="verificarMotivoEstoque()"><i data-lucide="upload-cloud"></i> Enviar Atualização</button>
+    </div>
+</div>
+<div class="container-acompanhamento" id="lista-estoque-agrupada">Carregando estoque da nuvem...</div>
+</div>
+
+<div id="tela-historico" class="tela">
+    <div style="margin-bottom: 10px; text-align: left; display: none;" id="container-filtro-sup-historico">
+        <label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria); display: block; margin-bottom: 6px;">Filtrar Região (Supervisor):</label>
+        <select id="filtro-sup-historico" style="width: 100%; border-color: var(--primary); background-color: var(--bg-card); padding: 14px; margin-bottom: 15px;" onchange="mudouSupHistorico()"></select>
+    </div>
+    <div style="margin-bottom: 15px; text-align: left;">
+        <label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria); display: block; margin-bottom: 6px;">Filtrar Usuário:</label>
+        <select id="filtro-promotor-historico" style="width: 100%; border-color: #8b5cf6; background-color: var(--bg-card); padding: 14px; margin-bottom: 0;" onchange="aplicarFiltroHistorico()"></select>
+    </div>
+    <div style="margin-bottom: 15px; text-align: left;">
+        <label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria); display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" id="filtro-ocultar-cancelados" onchange="aplicarFiltroHistorico()" checked style="width: auto; margin: 0;"> Ocultar vendas canceladas
+        </label>
+    </div>
+    <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+        <div style="flex: 1; text-align: left;">
+            <label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria); display: block; margin-bottom: 6px;">Data Início:</label>
+            <input type="date" id="filtro-data-inicio-historico" style="border-color: #8b5cf6; background-color: var(--bg-card); padding: 14px; margin-bottom: 0;" onchange="aplicarFiltroHistorico()">
+        </div>
+        <div style="flex: 1; text-align: left;">
+            <label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria); display: block; margin-bottom: 6px;">Data Fim:</label>
+            <input type="date" id="filtro-data-fim-historico" style="border-color: #8b5cf6; background-color: var(--bg-card); padding: 14px; margin-bottom: 0;" onchange="aplicarFiltroHistorico()">
+        </div>
+    </div>
+    <div style="display:flex;">
+        <button class="btn-sistema" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); margin-bottom: 20px; width: calc(50% - 5px);" onclick="carregarHistoricoDoBanco(true)"><i data-lucide="cloud-download"></i> Atualizar</button>
+        <button class="btn-sistema" id="btn-export-historico" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); margin-bottom: 20px; margin-left: 10px; width: calc(50% - 5px);" onclick="baixarRelatorioHistorico()"><i data-lucide="download"></i> Excel</button>
+    </div>
+    <div id="lista-historico" style="text-align: left; min-height: 300px; max-height: 600px; overflow-y: auto; background: var(--bg-card); padding: 18px; border-radius: 16px; border: 1px solid var(--border-color);">Carregando histórico da nuvem...</div>
+</div>
+
+<div id="tela-dashboard" class="tela">
+    <div class="controles-topo-acompanhamento" style="margin-bottom: 20px; display: flex; gap: 10px; align-items: center;">
+        <select id="seletor-mes-dash" class="seletor-mes" style="padding: 14px; font-size: 15px; margin-bottom: 0; flex: 1; border-color: var(--primary);" onchange="abrirDashboard()"><option value="">Mês Atual</option></select>
+        <button class="btn-sistema" onclick="forcarAtualizacaoDashboard()" style="margin-bottom: 0; width: auto; padding: 14px 18px; border-radius: 12px; background: var(--primary-gradiente);" title="Forçar Atualização"><i data-lucide="refresh-cw" id="icon-refresh-dash" style="margin: 0;"></i></button>
+    </div>
+    <div id="container-filtro-supervisor-dash" style="display: none; margin-bottom: 15px;">
+        <label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria); display: block; text-align: left; margin-bottom: 6px;">Equipe / Região:</label>
+        <select id="filtro-supervisor-dash" class="seletor-mes" style="width: 100%; padding: 14px;" onchange="mudouSupervisorDash()"></select>
+    </div>
+    <div id="container-filtro-promotor-dash" style="display: none; margin-bottom: 20px;">
+        <label style="font-size: 13px; font-weight: bold; color: var(--cor-secundaria); display: block; text-align: left; margin-bottom: 6px;">Promotor:</label>
+        <select id="filtro-promotor-dash" class="seletor-mes" style="width: 100%; padding: 14px; border-color: #8b5cf6; background-color: var(--bg-card);" onchange="abrirDashboard()"></select>
+    </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+        <div style="background: var(--primary-gradiente); color: white; padding: 20px 15px; border-radius: 20px; box-shadow: 0 10px 20px rgba(34,197,94,0.25);">
+            <span style="font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; justify-content: center; gap: 6px;"><i data-lucide="shopping-bag" class="lucide-sm"></i> Vendas Totais</span>
+            <h1 id="total-vendas-geral" style="margin: 10px 0 0 0; font-size: 32px;">...</h1>
+        </div>
+        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px 15px; border-radius: 20px; box-shadow: 0 10px 20px rgba(16,185,129,0.25);">
+            <span style="font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; justify-content: center; gap: 6px;"><i data-lucide="trending-up" class="lucide-sm"></i> Média / Dia</span>
+            <h1 id="media-diaria-geral" style="margin: 10px 0 0 0; font-size: 32px;">...</h1>
+        </div>
+    </div>
+    <div onclick="toggleComissao()" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 25px 20px; border-radius: 20px; box-shadow: 0 10px 25px rgba(245,158,11,0.3); cursor: pointer; transition: transform 0.2s; margin-bottom: 25px; text-align: left; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <span style="font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 6px; margin-bottom: 8px;"><i data-lucide="dollar-sign" class="lucide-sm"></i> Comissão Prevista</span>
+            <h1 id="total-comissao-geral" style="margin: 0; font-size: 32px;" data-valor="R$ 0,00">R$ ****</h1>
+        </div>
+        <span id="icone-olho-comissao" style="background: rgba(255,255,255,0.2); border-radius: 50%; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;"><i data-lucide="eye" style="margin:0;"></i></span>
+    </div>
+    <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; border: 1px solid var(--border-color);">
+        <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="pie-chart"></i> Modelos Mais Vendidos</h4>
+        <div style="position: relative; height: 260px; width: 100%; display: flex; justify-content: center;"><canvas id="graficoTopModelos"></canvas></div>
+    </div>
+    <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; text-align: left; border: 1px solid var(--border-color);">
+        <h4 style="margin-top:0; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; display: flex; align-items: center; gap: 8px;"><i data-lucide="star"></i> Aparelhos Foco</h4>
+        <div id="lista-foco-ativo-dash" style="font-size: 14px; margin-bottom: 15px; margin-top: 15px; color: var(--cor-texto);">Carregando alvo...</div>
+        <div id="detalhe-coparticipacao-cards" style="font-size: 14px; color: var(--cor-secundaria); border-top: 1px dashed var(--border-color); padding-top: 15px;">Carregando detalhes...</div>
+    </div>
+    <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; border: 1px solid var(--border-color);">
+        <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="target"></i> Meta Foco vs Realizado</h4>
+        <div style="width: 100%; overflow-x: auto; overflow-y: hidden;"><div id="wrap-graficoMetaPremiumCapa" style="position: relative; height: 350px; min-width: 100%;"><canvas id="graficoMetaPremiumCapa"></canvas></div></div>
+    </div>
+    <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; border: 1px solid var(--border-color);">
+        <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="percent"></i> Coparticipação Premium (%)</h4>
+        <div style="width: 100%; overflow-x: auto; overflow-y: hidden;"><div id="wrap-graficoCoparticipacaoPromotores" style="position: relative; height: 350px; min-width: 100%;"><canvas id="graficoCoparticipacaoPromotores"></canvas></div></div>
+    </div>
+    <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; text-align: left; border: 1px solid var(--border-color);">
+        <h4 id="titulo-ranking-dash" style="margin-top:0; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; display: flex; align-items: center; gap: 8px;"><i data-lucide="award"></i> Ranking</h4>
+        <div id="lista-ranking-promotores" style="margin-top: 15px;">Carregando ranking...</div>
+    </div>
+    <div style="background: var(--bg-card); padding: 20px; border-radius: 20px; margin-bottom: 25px; border: 1px solid var(--border-color);">
+        <h4 style="margin-top:0; text-align:left; display: flex; align-items: center; gap: 8px;"><i data-lucide="store"></i> Vendas por Loja</h4>
+        <div style="width: 100%; overflow-x: auto; overflow-y: hidden;"><div id="wrap-graficoVendasLoja" style="position: relative; height: 350px; min-width: 100%;"><canvas id="graficoVendasLoja"></canvas></div></div>
+    </div>
+</div>
+
+<div id="tela-admin" class="tela">
+    <div class="tabs-header">
+        <button class="tab-btn ativo admin-tab-btn" onclick="switchTab('admin-tab-equipe', 'admin-tab')"><i data-lucide="users"></i> Equipes & Regiões</button>
+        <button class="tab-btn admin-tab-btn" onclick="switchTab('admin-tab-comissao', 'admin-tab')"><i data-lucide="dollar-sign"></i> Regras de Comissão</button>
+        <button class="tab-btn admin-tab-btn" onclick="switchTab('admin-tab-global', 'admin-tab')"><i data-lucide="smartphone"></i> Modelos</button>
+    </div>
+    <div id="admin-tab-equipe" class="admin-tab-content" style="display: block;">
+        <div class="bloco-admin" id="bloco-lista-supervisores" style="background: var(--bg-card); border-radius: 20px; border: 1px solid var(--border-color); padding:20px;">
+            <h4><i data-lucide="network"></i> Regiões e Equipes</h4>
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <select id="filtro-cargo-admin" onchange="renderizarAdminUsuarios()" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--cor-texto);">
+                    <option value="todos">Todos os Cargos</option>
+                    <option value="promotor">Promotores</option>
+                    <option value="supervisor">Supervisores</option>
+                    <option value="regional">Regionais/Gestores</option>
+                </select>
+                <input type="text" id="busca-admin" placeholder="Buscar usuário..." onkeyup="renderizarAdminUsuarios()" style="flex: 2; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--cor-texto);">
+            </div>
+            <div id="lista-admin-supervisores" style="max-height: 400px; overflow-y: auto; margin-bottom: 15px;"></div>
+            <div id="bloco-criar-gestor" style="display: none; border-top: 1px dashed var(--border-color); padding-top: 20px; margin-top: 15px;">
+                <label style="font-size: 13px; font-weight: bold; color: #10b981; display: flex; align-items: center; gap: 6px; margin-bottom: 12px;"><i data-lucide="user-plus" class="lucide-sm"></i> Adicionar Novo Gestor/Supervisor:</label>
+                <div class="input-admin-row"><input type="text" id="admin-gs-login" placeholder="Login"><input type="text" id="admin-gs-nome" placeholder="Nome"></div>
+                <div class="input-admin-row">
+                    <input type="text" id="admin-gs-senha" placeholder="Senha">
+                    <select id="admin-gs-cargo" onchange="verificarAdminCargo(this.value)">
+                        <option value="supervisor">Supervisor</option>
+                        <option value="regional">Gestor Regional</option>
+                        <option value="gestor">Diretor Geral</option>
+                    </select>
+                </div>
+                <div class="input-admin-row" id="container-admin-regiao">
+                    <select id="admin-gs-regiao-select" onchange="verificarNovaRegiao(this.value)"><option value="">Carregando regiões...</option></select>
+                    <input type="text" id="admin-gs-regiao-input" placeholder="Digite a nova região (Ex: SP)" style="display:none; margin-top:10px;">
+                </div>
+                <button class="btn-acao btn-enviar" style="width: 100%; padding:14px; border-radius:12px; font-size:15px; border:none;" onclick="adminAddGestorSup()"><i data-lucide="check" style="margin-right:6px;"></i> Criar Perfil</button>
+            </div>
+        </div>
+    </div>
+    <div id="admin-tab-comissao" class="admin-tab-content" style="display: none;">
+        <div class="bloco-admin" id="bloco-admin-foco" style="display: none; background: var(--bg-card); border-radius: 20px; border: 1px solid var(--border-color); padding:20px;">
+            <h4><i data-lucide="star"></i> Aparelhos Foco / Coparticipação</h4>
+            <div id="container-seletor-foco-sup" style="margin-bottom: 15px; text-align: left;">
+                <label style="font-size: 12px; color: var(--cor-secundaria); font-weight: bold; display: block; margin-bottom: 6px;">Configurar Foco para a Equipe:</label>
+                <select id="seletor-foco-sup" style="padding: 14px; font-size: 15px; border: 2px solid var(--primary);" onchange="renderizarInputsFoco()"></select>
+                <div style="margin-top: 15px; background: var(--bg-item); padding: 18px; border-radius: 16px; border: 1px solid var(--primary); display: flex; align-items: center; justify-content: space-between;">
+                    <label style="font-size: 14px; font-weight: bold; color: var(--primary); margin:0;">Alvo de Coparticipação da Equipe (%):</label>
+                    <input type="number" id="input-taxa-copart" value="25" style="width: 80px; padding: 10px; margin:0; border: 2px solid var(--primary); font-weight: bold; font-size: 16px; color: var(--cor-texto);" onchange="atualizarListaPremiumGlobal()">
+                </div>
+            </div>
+            <div id="admin-foco-container" style="text-align: left;"></div>
+        </div>
+    </div>
+    <div id="admin-tab-global" class="admin-tab-content" style="display: none;">
+        <div class="bloco-admin" style="background: var(--bg-card); border-radius: 20px; border: 1px solid var(--border-color); padding:20px;">
+            <h4><i data-lucide="smartphone"></i> Cadastro de Novos Modelos (Global)</h4>
+            <div id="lista-admin-aparelhos" style="max-height: 400px; overflow-y: auto; margin-bottom: 20px; border: 1px solid var(--border-color); padding: 15px; border-radius: 12px; background: var(--bg-item);"></div>
+            <div class="input-admin-row"><input type="text" id="admin-aparelho-nome" placeholder="Nome (ex: A79)" style="flex: 2;"><input type="text" id="admin-aparelho-emoji" placeholder="Emoji (ex: 🛩️)" style="flex: 1;"></div>
+            <button class="btn-acao btn-enviar" style="width: 100%; padding:14px; border-radius:12px; font-size:15px; border:none;" onclick="adminAddAparelho()"><i data-lucide="plus" style="margin-right:6px;"></i> Adicionar Aparelho</button>
+        </div>
+    </div>
+</div>
+
+</div>
+
+<!-- INSERIMOS O SCRIPT OFICIAL DO SUPABASE AQUI ANTES DO SEU SCRIPT LOCAL -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- CHAMANDO OS SCRIPTS LOCAIS SEPARADOS -->
+<script src="api.js"></script>
+<script src="auth.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>
