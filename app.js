@@ -213,6 +213,63 @@ function ehPremium(textoBruto, supervisorId) {
     return (pSup[chave] === 1 || pSup[chave] === true); 
 }
 // ==========================================
+// SISTEMA DE PULL-TO-REFRESH NATIVO (NOVO)
+// ==========================================
+let ptrStartY = 0; let ptrCurrentY = 0; let isPulling = false;
+
+document.addEventListener('touchstart', e => {
+    if (window.scrollY === 0) { ptrStartY = e.touches[0].clientY; isPulling = true; }
+}, { passive: true });
+
+document.addEventListener('touchmove', e => {
+    if (!isPulling || window.scrollY > 0) return;
+    ptrCurrentY = e.touches[0].clientY;
+    let diffY = ptrCurrentY - ptrStartY;
+
+    if (diffY > 15) {
+        let ptr = document.getElementById('ptr-indicator');
+        if (!ptr) {
+            ptr = document.createElement('div'); ptr.id = 'ptr-indicator';
+            ptr.innerHTML = '<i data-lucide="arrow-down" id="ptr-icon" style="margin:0;"></i>';
+            document.body.appendChild(ptr);
+            if(typeof lucide !== 'undefined') lucide.createIcons();
+        }
+        ptr.style.top = Math.min(diffY - 50, 20) + 'px';
+        let icon = document.getElementById('ptr-icon');
+        if(diffY > 80) { icon.setAttribute('data-lucide', 'refresh-cw'); } 
+        else { icon.setAttribute('data-lucide', 'arrow-down'); }
+        if(typeof lucide !== 'undefined') lucide.createIcons();
+    }
+}, { passive: true });
+
+document.addEventListener('touchend', e => {
+    if (!isPulling) return;
+    isPulling = false;
+    let diffY = ptrCurrentY - ptrStartY;
+    let ptr = document.getElementById('ptr-indicator');
+    
+    if (ptr && diffY > 80) {
+        ptr.classList.add('refreshing'); ptr.style.top = '25px';
+        executarRefreshTelaAtual(); // Atualiza os dados
+        setTimeout(() => {
+            ptr.style.top = '-60px'; ptr.classList.remove('refreshing');
+            setTimeout(() => ptr.remove(), 300);
+        }, 1500);
+    } else if (ptr) {
+        ptr.style.top = '-60px'; setTimeout(() => ptr.remove(), 300);
+    }
+    ptrStartY = 0; ptrCurrentY = 0;
+});
+
+function executarRefreshTelaAtual() {
+    vibrar(50);
+    if (document.getElementById('tela-dashboard').classList.contains('ativa')) { forcarAtualizacaoDashboard(); } 
+    else if (document.getElementById('tela-acompanhamento').classList.contains('ativa')) { carregarDadosDoBanco(); } 
+    else if (document.getElementById('tela-estoque').classList.contains('ativa')) { carregarEstoqueDoBanco(); } 
+    else if (document.getElementById('tela-historico').classList.contains('ativa')) { carregarHistoricoDoBanco(true); } 
+    else { mostrarToast("Atualizado!", "sucesso"); }
+}
+// ==========================================
 // app.js - PARTE 3 DE 10
 // Seleção de Equipes, Lojas e Vendedores
 // ==========================================
@@ -604,8 +661,11 @@ async function carregarDadosDoBanco() {
     if(div) div.innerHTML = gerarSkeletonHtml(5);
 
     try {
-        const { data, error } = await supabaseClient.from('vendas').select('*').neq('status', 'Cancelado').order('data_venda', { ascending: false });
-        if (error) throw error;
+const { data, error } = await supabaseClient.from('vendas')
+    .select('*')
+    .neq('status', 'Cancelado')
+    .neq('status', 'Auditoria') // <-- NOVA TRAVA: Ignora auditoria de estoque
+    .order('data_venda', { ascending: false });        if (error) throw error;
 
         dadosAcompanhamentoGlobal = data.map(row => ({
             Vendedor: `[${row.loja}] ${row.vendedor}`,
@@ -625,7 +685,7 @@ async function carregarDadosDoBanco() {
 }
 // ==========================================
 // app.js - PARTE 6 DE 10
-// Histórico, Filtros de Data e Estorno de Vendas
+// Histórico, Filtros de Data, Estorno e Acordeão
 // ==========================================
 
 function abrirHistorico(tipo) { 
@@ -800,6 +860,16 @@ function validarECancelarVenda() {
 let limiteHistorico = 50; 
 function aplicarFiltroHistorico() { limiteHistorico = 50; renderizarListaHistorico(); }
 
+// FUNÇÃO DO ACORDEÃO (ABRIR E FECHAR CARD)
+window.toggleAcordeaoHistorico = function(btn, id) {
+    let content = document.getElementById(id);
+    if(content.classList.contains('expandido')) {
+        content.classList.remove('expandido'); btn.classList.remove('aberto');
+    } else {
+        content.classList.add('expandido'); btn.classList.add('aberto');
+    }
+};
+
 function renderizarListaHistorico() { 
     const div = document.getElementById("lista-historico"); 
     let dataInicio = document.getElementById('filtro-data-inicio-historico') ? document.getElementById('filtro-data-inicio-historico').value : ""; 
@@ -865,7 +935,6 @@ function renderizarListaHistorico() {
         let nomePromotor = bancoUsuarios[item.pLogin] ? bancoUsuarios[item.pLogin].nome : item.pLogin; 
         if (!nomePromotor) nomePromotor = "Usuário Desconhecido"; 
         
-        let textoDetalheLimpo = item.detalhe.replace(/\[CANCELADO\]/ig, '').trim(); 
         let opacidade = item.isCancelado ? "opacity: 0.7; filter: grayscale(0.8);" : ""; 
         let bgCard = item.isCancelado ? "background: var(--bg-fundo);" : "background: var(--bg-card);"; 
         let bordaCard = item.isCancelado ? "border: 1px dashed #ef4444;" : "border: 1px solid var(--border-color);"; 
@@ -873,6 +942,38 @@ function renderizarListaHistorico() {
         let badgeCancelado = item.isCancelado ? `<div style="background: #fee2e2; color: #ef4444; padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: bold; margin-bottom: 8px; display: inline-block;">ESTORNADO</div>` : ""; 
         let icone = item.isEstoque ? '<i data-lucide="package" style="color:#f59e0b;" class="lucide-sm"></i>' : '<i data-lucide="shopping-bag" style="color:#10b981;" class="lucide-sm"></i>'; 
         if (item.isCancelado) icone = '<i data-lucide="slash" style="color: #ef4444;" class="lucide-sm"></i>'; 
+        
+        // CÁLCULO INTELIGENTE DO ACORDEÃO (SEPARA TÍTULO E DETALHES IMEIs)
+        let textoBase = item.detalhe.replace(/\[CANCELADO\]/ig, '').trim();
+        let tituloResumo = textoBase; let textoEscondido = "";
+        
+        if (textoBase.includes('→')) {
+            let partes = textoBase.split('→'); tituloResumo = partes[0].replace('Venda:', '').trim(); textoEscondido = "→ " + partes.slice(1).join('→').trim();
+        } else if (textoBase.includes('|')) {
+            let partes = textoBase.split('|'); tituloResumo = partes[0].replace('Venda:', '').trim(); textoEscondido = "| " + partes.slice(1).join('|').trim();
+        } else if (textoBase.includes(': De ')) {
+            let partes = textoBase.split(': De '); tituloResumo = partes[0].trim(); textoEscondido = "De " + partes[1].trim();
+        }
+
+        let htmlCorpoVenda = "";
+        if (textoEscondido !== "") {
+            htmlCorpoVenda = `
+                <div style="display: flex; flex-direction: column; width: 100%;">
+                    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; width: 100%;">
+                        <div style="display:flex; align-items:flex-start; gap:8px;">${icone} <strong style="font-size:14px;">${tituloResumo}</strong></div>
+                        <button class="btn-expandir-historico" onclick="toggleAcordeaoHistorico(this, 'acordeao-${item.originalIndex}')" style="background:var(--bg-fundo); border:1px solid var(--border-color); color:var(--cor-secundaria); padding:4px 8px; border-radius:6px; cursor:pointer;">
+                            <i data-lucide="chevron-down" style="margin:0; transition: transform 0.3s; width:14px; height:14px;"></i>
+                        </button>
+                    </div>
+                    <div id="acordeao-${item.originalIndex}" class="historico-detalhes">
+                        <div style="padding: 12px; background: var(--bg-fundo); border-radius: 8px; margin-top: 8px; font-size: 12px; font-weight: 500; color: var(--cor-secundaria); word-break: break-word; border: 1px solid var(--border-color);">
+                            ${textoEscondido}
+                        </div>
+                    </div>
+                </div>`;
+        } else {
+            htmlCorpoVenda = `<div style="display: flex; align-items: flex-start; gap: 8px;">${icone} <span style="word-break: break-word; font-weight:bold;">${textoBase}</span></div>`;
+        }
         
         let btnAcao = ""; 
         let adminRole = (usuarioLogado.cargo === "supervisor" || usuarioLogado.cargo === "regional" || usuarioLogado.cargo === "gestor" || usuarioLogado.id === "master"); 
@@ -892,16 +993,25 @@ function renderizarListaHistorico() {
             </div>
             <div class="swipe-content" style="${bgCard} padding: 16px; display: flex; flex-direction: column; gap: 8px;">
                 ${badgeCancelado}
-                <div style="display: flex; justify-content: space-between; align-items:center;">
-                    <span style="font-size:12px; font-weight:bold; color:var(--cor-secundaria);">${dataFormatada}</span>
-                    <span style="font-size: 13px; font-weight:bold; color:var(--primary);"><i data-lucide="user" class="lucide-sm"></i> ${nomePromotor}</span>
+                
+                <div style="display: flex; flex-direction: column; gap: 4px; text-align: left;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        <span style="font-size: 11px; font-weight: bold; color: var(--cor-secundaria);">${dataFormatada}</span>
+                    </div>
+                    <div style="font-size: 13px; font-weight: bold; color: var(--primary); display: flex; align-items: center; gap: 4px; word-break: break-word; overflow: hidden;">
+                        <i data-lucide="user" class="lucide-sm" style="flex-shrink: 0;"></i> 
+                        <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;">${nomePromotor}</span>
+                    </div>
                 </div>
-                <div style="font-size:14px; ${estiloTexto} display: flex; align-items: flex-start; justify-content: space-between; gap:8px;">
-                    <div style="display: flex; align-items: flex-start; gap: 8px;">${icone} <span>${textoDetalheLimpo}</span></div>
+
+                <!-- CORPO DA VENDA (COM ACORDEÃO) -->
+                <div style="font-size: 14px; ${estiloTexto} text-align: left; display: flex;">
+                    ${htmlCorpoVenda}
                 </div>
+
                 <div style="font-size: 10px; color: var(--cor-secundaria); text-align: center; margin-top: 5px; opacity: 0.6; display: ${btnAcao !== '' ? 'block' : 'none'};" class="texto-deslize-mobile">
-    <i data-lucide="chevrons-left" class="lucide-sm"></i> Deslize para a esquerda para ações
-</div>
+                    <i data-lucide="chevrons-left" class="lucide-sm"></i> Deslize para a esquerda para ações
+                </div>
             </div>
         </div>`;
     }); 
@@ -913,6 +1023,8 @@ function renderizarListaHistorico() {
         el.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, {passive: true});
         el.addEventListener('touchmove', e => {
             let diff = startX - e.touches[0].clientX;
+            // Bloqueia o deslize horizontal se o botão do acordeão foi clicado para não estornar sem querer
+            if (e.target.closest('.btn-expandir-historico') || e.target.closest('.historico-detalhes')) return;
             if (diff > 40) { el.style.transform = 'translateX(-130px)'; } 
             else if (diff < -40) { el.style.transform = 'translateX(0)'; } 
         }, {passive: true});
@@ -1296,8 +1408,49 @@ async function executarEnvioEstoque(motivoSelecionado) {
         loadIcons();
     }
 }
-function enviarConferenciaDiaria() { localStorage.setItem('ultimaConferencia_' + usuarioLogado.id, new Date().toLocaleDateString('pt-BR')); document.getElementById('container-btn-conferencia-ok').style.display = "none"; mostrarToast("Conferência confirmada com sucesso!", "sucesso"); }
-// ==========================================
+async function enviarConferenciaDiaria() { 
+    if (!navigator.onLine) { 
+        mostrarToast("Sem internet para confirmar.", "erro"); 
+        return; 
+    }
+
+    let btn = document.getElementById('btn-conferencia-ok');
+    if(btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" style="animation: spin 1s linear infinite;"></i> Registrando...';
+        loadIcons();
+    }
+
+    try {
+        // Envia o registro de conferência para o banco de dados como uma "Auditoria"
+        const { error } = await supabaseClient.from('vendas').insert([{
+            promotor_login: usuarioLogado.id,
+            loja: document.getElementById('filtro-loja-estoque') ? document.getElementById('filtro-loja-estoque').value : "Múltiplas",
+            vendedor: "Conferência Diária",
+            aparelhos_vendidos: "[Auditoria] Estoque conferido e validado sem alterações.",
+            data_venda: new Date().toISOString(),
+            status: 'Auditoria' 
+        }]);
+
+        if (error) throw error;
+
+        // Salva localmente para esconder o botão hoje
+        localStorage.setItem('ultimaConferencia_' + usuarioLogado.id, new Date().toLocaleDateString('pt-BR')); 
+        document.getElementById('container-btn-conferencia-ok').style.display = "none"; 
+        
+        mostrarToast("Conferência registrada na nuvem com sucesso!", "sucesso"); 
+        
+    } catch (e) {
+        console.error("Erro ao registrar conferência:", e);
+        mostrarToast("Erro ao registrar conferência no sistema.", "erro");
+    } finally {
+        if(btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="check-square" class="lucide-lg"></i> Confirmar Conferência Diária';
+            loadIcons();
+        }
+    }
+}// ==========================================
 // app.js - PARTE 8 DE 10
 // Dashboard, Filtros Dinâmicos e Coleta de Métricas
 // ==========================================
@@ -1336,7 +1489,7 @@ function atualizarFiltroPromotorDash() {
 function atualizarFiltroLojaDash() {
     let selProm = document.getElementById('filtro-promotor-dash');
     let selLoja = document.getElementById('filtro-loja-dash');
-    if (!selLoja) return;
+    if (!selLoja) return; 
     
     let htmlOp = '<option value="todas">Todas as Lojas</option>';
     let lojasDaBusca = [];
@@ -1402,7 +1555,7 @@ function abrirDashboard() {
     let dtInicio = inputDtIni && inputDtIni.value ? inputDtIni.value : null;
     let dtFim = inputDtFim && inputDtFim.value ? inputDtFim.value : null;
     
-    let query = supabaseClient.from('vendas').select('*').neq('status', 'Cancelado');
+    let query = supabaseClient.from('vendas').select('*').neq('status', 'Cancelado').neq('status', 'Auditoria');
 
     if (dtInicio) { query = query.gte('data_venda', dtInicio + 'T00:00:00'); }
     if (dtFim) { query = query.lte('data_venda', dtFim + 'T23:59:59'); }
@@ -1665,9 +1818,26 @@ function gerarGraficos(dadosVendas) {
     } else {
         document.getElementById("titulo-ranking-dash").innerHTML = (agrupamento === "supervisor") ? '<i data-lucide="award"></i> Ranking de Equipes (vs Meta)' : '<i data-lucide="award"></i> Ranking de Promotores (vs Meta Individual)'; 
         promOrd = Object.keys(metricas).sort((a,b) => metricas[b].realizadoGeral - metricas[a].realizadoGeral); let rNum = 1; let uQtd = -1;
+        
+        // Pega as configurações de Gamificação da equipe
+        let supAlvoGami = (supervisorFoco !== "todos") ? supervisorFoco : "geral";
+        let configGami = (valoresComissao[supAlvoGami] && valoresComissao[supAlvoGami].gamificacao) ? valoresComissao[supAlvoGami].gamificacao : { iconeTop1: '👑', iconeMeta: '🎯', iconeFire: '🔥', minFire: 5 };
+
         promOrd.forEach(p => { 
             let m = metricas[p]; if(uQtd !== -1 && m.realizadoGeral < uQtd) rNum++; uQtd = m.realizadoGeral; let bC = rNum === 1 ? 'rank-1' : rNum === 2 ? 'rank-2' : rNum === 3 ? 'rank-3' : 'rank-outros'; let metaAlvo = m.metaIndividual; let pctHit = metaAlvo > 0 ? ((m.realizadoGeral / metaAlvo) * 100).toFixed(1) : 0; let corHit = pctHit >= 100 ? '#10b981' : '#ef4444'; let labelMetaRanking = agrupamento === "supervisor" ? "Meta Acumulada" : "Meta Individual"; let pctFocoVendedor = m.realizadoGeral > 0 ? ((m.realizadoPremium / m.realizadoGeral) * 100).toFixed(1) : 0; 
             
+            // --- INÍCIO: SISTEMA DE GAMIFICAÇÃO & GLOW ---
+            let iconesGami = "";
+            if (rNum === 1 && m.realizadoGeral > 0) iconesGami += `<span title="Top 1" style="margin-left: 6px; font-size: 16px; filter: drop-shadow(0px 0px 4px rgba(255, 215, 0, 0.8));">${configGami.iconeTop1}</span>`;
+            if (pctHit >= 100 && metaAlvo > 0) iconesGami += `<span title="Meta Batida" style="margin-left: 4px; font-size: 16px; filter: drop-shadow(0px 0px 4px rgba(16, 185, 129, 0.8));">${configGami.iconeMeta}</span>`;
+            if (m.realizadoPremium >= configGami.minFire && configGami.minFire > 0) iconesGami += `<span title="On Fire (Premium)" style="margin-left: 4px; font-size: 16px; filter: drop-shadow(0px 0px 4px rgba(245, 158, 11, 0.8));">${configGami.iconeFire}</span>`;
+            
+            // Animação CSS para quem bateu a meta (Glow effect)
+            let styleGlow = (pctHit >= 100 && metaAlvo > 0) 
+                ? "background: linear-gradient(135deg, rgba(16,185,129,0.08) 0%, transparent 100%); border: 1px solid rgba(16,185,129,0.3); border-left: 4px solid #10b981;" 
+                : "border-bottom: 1px dashed var(--border-color); border-left: 4px solid transparent;";
+            // --- FIM: SISTEMA DE GAMIFICAÇÃO & GLOW ---
+
             let htmlMetasExtras = "";
             if (m.metasLinhas && m.metasLinhas.length > 0) {
                 htmlMetasExtras += `<div style="display:flex; flex-direction:column; gap:8px; margin-top:10px; border-top:1px dashed var(--border-color); padding-top:10px;">`;
@@ -1690,7 +1860,8 @@ function gerarGraficos(dadosVendas) {
                 htmlMetasExtras += `</div>`;
             }
 
-            htmlRank += `<div style="display:flex;flex-direction:column;padding:12px 0;border-bottom:1px dashed var(--border-color);"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><div style="display:flex;align-items:center;gap:10px;"><span class="badge-rank ${bC}">${rNum}º</span><strong style="font-size: 15px;"><i data-lucide="${agrupamento === 'supervisor' ? 'users' : 'user'}" class="lucide-sm"></i> ${p}</strong></div><span style="background:var(--bg-item);color:var(--primary);font-weight:bold;padding:4px 10px;border-radius:6px;font-size:14px;">${m.realizadoGeral} un</span></div><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--cor-secundaria);background:var(--bg-item);padding:4px 8px;border-radius:4px;"><span>🎯 ${labelMetaRanking}: <strong>${metaAlvo} un</strong></span><span style="color: ${corHit}; font-weight: bold;">${pctHit}% Concluído</span></div><div style="font-size:11px; color:var(--cor-secundaria); text-align:left; padding-left:4px; margin-top:2px;">Alvo Premium/Foco: <strong style="color:#10b981;">${m.realizadoPremium} / ${m.metaPremium} un</strong></div>${htmlMetasExtras}</div>`; 
+            // HTML DO CARD MODIFICADO PARA RECEBER OS ÍCONES E O GLOW
+            htmlRank += `<div style="display:flex;flex-direction:column;padding:12px 10px; border-radius: 8px; margin-bottom: 6px; transition: all 0.3s ease; ${styleGlow}"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><div style="display:flex;align-items:center;gap:10px;"><span class="badge-rank ${bC}">${rNum}º</span><strong style="font-size: 15px; display:flex; align-items:center;"><i data-lucide="${agrupamento === 'supervisor' ? 'users' : 'user'}" class="lucide-sm"></i> ${p} ${iconesGami}</strong></div><span style="background:var(--bg-item);color:var(--primary);font-weight:bold;padding:4px 10px;border-radius:6px;font-size:14px;">${m.realizadoGeral} un</span></div><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--cor-secundaria);background:var(--bg-item);padding:4px 8px;border-radius:4px;"><span>🎯 ${labelMetaRanking}: <strong>${metaAlvo} un</strong></span><span style="color: ${corHit}; font-weight: bold;">${pctHit}% Concluído</span></div><div style="font-size:11px; color:var(--cor-secundaria); text-align:left; padding-left:4px; margin-top:4px;">Alvo Premium/Foco: <strong style="color:#10b981;">${m.realizadoPremium} / ${m.metaPremium} un</strong></div>${htmlMetasExtras}</div>`; 
         });
     }
     document.getElementById("lista-ranking-promotores").innerHTML = htmlRank || "<span style='font-size:13px; color:var(--cor-secundaria);'>Nenhuma venda registrada.</span>"; loadIcons();
@@ -2012,7 +2183,7 @@ function renderizarTermometroLojas(resumoLojas) {
 // ================= FUNÇÃO DE COMPARTILHAR/PRINT CORRIGIDA =================
 async function compartilharDashboard() {
     mostrarToast("Gerando print em alta definição...", "info");
-    let elemento = document.getElementById('tela-dashboard'); //[cite: 7]
+    let elemento = document.getElementById('tela-dashboard');
     if (!elemento) return;
     
     try {
@@ -2183,14 +2354,19 @@ function adminAddAparelho() {
     mapaEmojis[n] = e; document.getElementById('admin-aparelho-nome').value = ""; document.getElementById('admin-aparelho-emoji').value = ""; renderizarAdminAparelhos(); mostrarToast("Aparelho adicionado. Clique em 'Salvar'.", "info");
 }
 
+// SUBSTITUIR NA PARTE 10
 function renderizarInputsFoco() {
     const container = document.getElementById('admin-foco-container'); const selSup = document.getElementById('seletor-foco-sup'); 
     if (!container || !selSup) return;
     let supId = selSup.value; let premiumSup = aparelhosPremium[supId] || aparelhosPremium["geral"] || {}; let taxaSup = taxasCoparticipacao[supId] || taxasCoparticipacao["geral"] || 25; let vComissaoSup = valoresComissao[supId] || valoresComissao["geral"] || {}; 
     let grupos = vComissaoSup.grupos || []; let aparelhosCfg = vComissaoSup.aparelhos || {}; let campanhasAtivas = vComissaoSup.campanhasPersonalizadas || [];
     let marcasConcorrentes = vComissaoSup.marcas_concorrentes || ["Samsung", "Motorola", "Outros"];
+    let gamificacao = vComissaoSup.gamificacao || { iconeTop1: '👑', iconeMeta: '🎯', iconeFire: '🔥', minFire: 5 };
 
     document.getElementById('input-taxa-copart').value = taxaSup;
+
+    // NOVO BLOCO DE GAMIFICAÇÃO AQUI
+    let htmlGamificacao = `<div style="background: var(--bg-item); padding: 20px; border-radius: 16px; border: 1px solid var(--border-color); margin-top: 20px; text-align: left;"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;"><span style="font-size: 14px; font-weight: bold; color: #ef4444;"><i data-lucide="award" class="lucide-sm"></i> Gamificação (Ranking e Troféus)</span></div><div style="display: flex; gap: 10px; flex-wrap: wrap;"><div style="flex: 1; min-width: 120px;"><span style="font-size:11px; font-weight:bold; color:var(--cor-secundaria);">Ícone Top 1:</span><input type="text" id="gami-icone-top1" value="${gamificacao.iconeTop1}" style="padding:10px; margin-top:4px;" onchange="atualizarListaPremiumGlobal()"></div><div style="flex: 1; min-width: 120px;"><span style="font-size:11px; font-weight:bold; color:var(--cor-secundaria);">Ícone Meta:</span><input type="text" id="gami-icone-meta" value="${gamificacao.iconeMeta}" style="padding:10px; margin-top:4px;" onchange="atualizarListaPremiumGlobal()"></div><div style="flex: 1; min-width: 120px;"><span style="font-size:11px; font-weight:bold; color:var(--cor-secundaria);">Ícone "On Fire":</span><input type="text" id="gami-icone-fire" value="${gamificacao.iconeFire}" style="padding:10px; margin-top:4px;" onchange="atualizarListaPremiumGlobal()"></div><div style="flex: 1; min-width: 120px;"><span style="font-size:11px; font-weight:bold; color:var(--cor-secundaria);">Premium p/ Fire:</span><input type="number" id="gami-min-fire" value="${gamificacao.minFire}" style="padding:10px; margin-top:4px;" onchange="atualizarListaPremiumGlobal()"></div></div></div>`;
 
     let htmlGrupos = '<div style="background: var(--bg-item); padding: 20px; border-radius: 16px; border: 1px solid var(--border-color); margin-top: 20px; text-align: left;"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;"><span style="font-size: 15px; font-weight: bold; color: #8b5cf6;"><i data-lucide="layers" class="lucide-sm"></i> Categorias de Comissionamento</span><button class="btn-acao btn-enviar" style="padding: 8px 14px; font-size: 12px; width: auto; background: #8b5cf6;" onclick="adminAddGrupo()"><i data-lucide="plus"></i> Nova Categoria</button></div>';
     if(grupos.length === 0) htmlGrupos += '<span style="font-size:12px; color:var(--cor-secundaria);">Crie categorias para somar o volume de vendas.</span>';
@@ -2238,7 +2414,41 @@ function renderizarInputsFoco() {
         htmlAparelhos += `</div></div>`;
     }
     htmlAparelhos += '</div>';
-    container.innerHTML = htmlGrupos + htmlCampanhas + htmlMarcas + htmlAparelhos; loadIcons();
+    
+    // AQUI INJETAMOS A GAMIFICAÇÃO TAMBÉM
+    container.innerHTML = htmlGamificacao + htmlGrupos + htmlCampanhas + htmlMarcas + htmlAparelhos; 
+    loadIcons();
+}
+
+function atualizarListaPremiumGlobal() {
+    let selSup = document.getElementById('seletor-foco-sup').value;
+    let taxaInputs = document.getElementById('input-taxa-copart'); if (taxaInputs) taxasCoparticipacao[selSup] = Number(taxaInputs.value);
+    
+    let pObj = {}; document.querySelectorAll('.check-foco-aparelho').forEach(cb => { if (cb.checked) pObj[cb.value] = 1; }); aparelhosPremium[selSup] = pObj;
+    if (!valoresComissao[selSup]) valoresComissao[selSup] = {};
+    
+    // SALVANDO A GAMIFICAÇÃO
+    valoresComissao[selSup].gamificacao = {
+        iconeTop1: document.getElementById('gami-icone-top1') ? document.getElementById('gami-icone-top1').value : '👑',
+        iconeMeta: document.getElementById('gami-icone-meta') ? document.getElementById('gami-icone-meta').value : '🎯',
+        iconeFire: document.getElementById('gami-icone-fire') ? document.getElementById('gami-icone-fire').value : '🔥',
+        minFire: document.getElementById('gami-min-fire') ? Number(document.getElementById('gami-min-fire').value) : 5
+    };
+
+    let campanhas = []; document.querySelectorAll('.linha-campanha-dinamica').forEach(bloco => { campanhas.push({ aparelho: bloco.querySelector('.camp-aparelho').value, promotorAlvo: bloco.querySelector('.camp-promotor').value, qtdMinima: Number(bloco.querySelector('.camp-qtd').value), bonus: Number(bloco.querySelector('.camp-valor').value) }); }); valoresComissao[selSup].campanhasPersonalizadas = campanhas;
+    
+    if(!valoresComissao[selSup].aparelhos) valoresComissao[selSup].aparelhos = {};
+    let cfgAp = valoresComissao[selSup].aparelhos;
+
+    document.querySelectorAll('.ap-tipo-regra').forEach(sel => {
+         let ap = sel.getAttribute('data-ap'); let val = sel.value; if (!cfgAp[ap]) cfgAp[ap] = {};
+         if (val === 'nenhum') { cfgAp[ap] = { tipo: 'nenhum' }; } 
+         else if (val === 'fixo') { let inputFixo = document.querySelector(`.ap-valor-fixo[data-ap="${ap}"]`); cfgAp[ap] = { tipo: 'fixo', valorFixo: inputFixo ? Number(inputFixo.value) : 0 }; } 
+         else if (val.startsWith('grupo_')) { 
+              let gId = val.replace('grupo_', ''); cfgAp[ap] = { tipo: 'grupo', grupoId: gId, valores: {} };
+              document.querySelectorAll(`.ap-valor-grupo-nivel[data-ap="${ap}"]`).forEach(inp => { let nIdx = inp.getAttribute('data-nidx'); cfgAp[ap].valores[nIdx] = Number(inp.value); });
+         }
+    });
 }
 
 function adminAddGrupo() { let selSup = document.getElementById('seletor-foco-sup').value; if (!valoresComissao[selSup]) valoresComissao[selSup] = {}; if (!valoresComissao[selSup].grupos) valoresComissao[selSup].grupos = []; valoresComissao[selSup].grupos.push({ id: 'g' + Date.now(), nome: 'Nova Categoria', niveis: [{ meta: 1 }] }); renderizarInputsFoco(); atualizarListaPremiumGlobal(); }
