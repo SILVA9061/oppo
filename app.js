@@ -930,7 +930,12 @@ function setFiltroDataRapidoDash(tipo) {
     if (!inputInicio || !inputFim) return;
     
     let hoje = new Date();
-    let formatarData = (d) => d.toISOString().split('T')[0];
+    let formatarData = (d) => {
+        let ano = d.getFullYear();
+        let mes = String(d.getMonth() + 1).padStart(2, '0');
+        let dia = String(d.getDate()).padStart(2, '0');
+        return `${ano}-${mes}-${dia}`;
+    };
     
     if (tipo === 'hoje') {
         let strHoje = formatarData(hoje);
@@ -956,7 +961,6 @@ function setFiltroDataRapidoDash(tipo) {
         inputFim.value = "";
     }
     
-    // Dispara a atualização dos gráficos e do Market Share com as novas datas
     abrirDashboard();
     carregarGraficosShare();
 }
@@ -1391,8 +1395,12 @@ function abrirDashboard() {
     loadIcons(); 
     document.getElementById("total-vendas-geral").innerText = "..."; 
     
-    let dtInicio = document.getElementById("dash-data-inicio") ? document.getElementById("dash-data-inicio").value : null;
-    let dtFim = document.getElementById("dash-data-fim") ? document.getElementById("dash-data-fim").value : null;
+    // TRATAMENTO BLINDADO DE DATAS PARA O SUPABASE
+    let inputDtIni = document.getElementById("dash-data-inicio");
+    let inputDtFim = document.getElementById("dash-data-fim");
+    
+    let dtInicio = inputDtIni && inputDtIni.value ? inputDtIni.value : null;
+    let dtFim = inputDtFim && inputDtFim.value ? inputDtFim.value : null;
     
     let query = supabaseClient.from('vendas').select('*').neq('status', 'Cancelado');
 
@@ -1402,7 +1410,7 @@ function abrirDashboard() {
     query.then(({ data, error }) => {
         if (error) throw error;
         
-        let dados = data.map(row => ({
+        let dados = (data || []).map(row => ({
             promotor_login: row.promotor_login, 
             loja: row.loja,
             Vendedor: `[${row.loja}] ${row.vendedor}`,
@@ -1426,10 +1434,12 @@ function abrirDashboard() {
         loadIcons(); 
     }); 
 }
-
 function toggleComissao() { let elComissao = document.getElementById("total-comissao-geral"); let iconeOlho = document.getElementById("icone-olho-comissao"); if (elComissao.innerText === "R$ ****") { elComissao.innerText = elComissao.dataset.valor || "R$ 0,00"; iconeOlho.innerHTML = '<i data-lucide="eye-off" style="margin:0;"></i>'; } else { elComissao.innerText = "R$ ****"; iconeOlho.innerHTML = '<i data-lucide="eye" style="margin:0;"></i>'; } loadIcons(); }
 function isCampaignActiveInMonth(startStr, endStr, mesSelecionado) { return true; }
 
+// ==========================================
+// SEÇÃO DO DASHBOARD COMPLETA (GERAR GRÁFICOS)
+// ==========================================
 function gerarGraficos(dadosVendas) {
     if (!dadosVendas) dadosVendas = []; 
     let totalGeral = 0; let vendasPorLoja = {}; let vendasPorModelo = {}; let metricas = {}; let modelosFocoVendidos = {}; let rankingPorLoja = {}; 
@@ -1437,7 +1447,6 @@ function gerarGraficos(dadosVendas) {
     
     let containerSup = document.getElementById('container-filtro-supervisor-dash');
     let isSupVisible = containerSup && containerSup.style.display !== "none";
-    
     let containerProm = document.getElementById('container-filtro-promotor-dash');
     let isPromVisible = containerProm && containerProm.style.display !== "none";
 
@@ -1550,7 +1559,6 @@ function gerarGraficos(dadosVendas) {
                             }
                         });
                     }
-                    
                     if (checkPrem) { 
                         metricas[nomeAvo].realizadoPremium += 1; 
                         modelosFocoVendidos[modeloFormatado] = (modelosFocoVendidos[modeloFormatado] || 0) + 1; 

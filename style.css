@@ -1,9 +1,15 @@
+/* ==========================================
+   SCROLLBAR CUSTOMIZADA
+========================================== */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.2); border-radius: 10px; }
 body.dark-mode ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); }
 ::-webkit-scrollbar-thumb:hover { background: var(--primary); }
 
+/* ==========================================
+   VARIÁVEIS DE TEMA (LIGHT / DARK)
+========================================== */
 :root {
     --bg-fundo: #f1f5f9; --bg-container: rgba(255, 255, 255, 0.95); --bg-card: rgba(255, 255, 255, 0.85); 
     --bg-item: rgba(255, 255, 255, 0.95); --cor-texto: #0f172a; --cor-secundaria: #475569;
@@ -16,11 +22,16 @@ body.dark-mode {
     --border-color: rgba(255, 255, 255, 0.08); --bg-input: #0e1713; --shadow-color: rgba(0, 0, 0, 0.5);
     --primary: #22c55e; --primary-gradiente: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
 }
+
+/* ==========================================
+   ESTRUTURA GLOBAL E ANIMAÇÕES
+========================================== */
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 0 0 100px 0; text-align: center; background-color: var(--bg-fundo); color: var(--cor-texto); transition: background-color 0.3s ease; margin: 0; min-height: 100vh; }
 @keyframes spin { 100% { transform: rotate(360deg); } }
 
 .container { max-width: 480px; margin: 0 auto; background: var(--bg-container); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); padding: 0 25px 30px 25px; border-radius: 0 0 24px 24px; border: 1px solid var(--border-color); box-shadow: 0 20px 40px var(--shadow-color); transition: max-width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); position: relative; min-height: 100vh; }
 .container-wide { max-width: 1000px !important; }
+
 .header-global { position: sticky; top: 0; background: var(--bg-container); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); z-index: 1000; display: none; justify-content: space-between; align-items: center; padding: 15px 25px; margin: 0 -25px 25px -25px; border-bottom: 1px solid var(--border-color); }
 .header-user-info { display: flex; align-items: center; gap: 12px; }
 .header-avatar { width: 40px; height: 40px; border-radius: 12px; background: var(--primary-gradiente); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px; box-shadow: 0 4px 10px rgba(34, 197, 94, 0.3);}
@@ -44,6 +55,9 @@ h4 { color: var(--cor-texto) !important; font-weight: 700; margin-top: 0; }
 .lucide-lg { width: 24px; height: 24px; margin-right: 8px; }
 .lucide-sm { width: 14px; height: 14px; margin-right: 4px; }
 
+/* ==========================================
+   NAVEGAÇÃO E ABAS
+========================================== */
 .tabs-header { display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid var(--border-color); overflow-x: auto; padding-bottom: 2px; }
 .tabs-header::-webkit-scrollbar { height: 4px; }
 .tabs-header::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
@@ -66,6 +80,9 @@ input:focus, select:focus { outline: none; border-color: var(--primary); box-sha
 .btn-limpar { background: linear-gradient(135deg, #64748b 0%, #475569 100%); box-shadow: 0 6px 15px rgba(100, 116, 139, 0.3); }
 .btn-limpar:hover { background: #475569; transform: translateY(-2px); }
 
+/* ==========================================
+   CARDS E COMPONENTES DE VENDAS
+========================================== */
 .card-padrao { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 20px; margin-bottom: 25px; box-shadow: 0 4px 6px var(--shadow-color); text-align: left; }
 .card-promotor { display: flex; align-items: center; gap: 15px; }
 .label-promotor { font-size: 11px; color: var(--cor-secundaria); font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -82,6 +99,9 @@ input:focus, select:focus { outline: none; border-color: var(--primary); box-sha
 #area-conferencia { display: none; background: var(--bg-card); border: 2px dashed var(--primary); padding: 18px; border-radius: 16px; margin-bottom: 20px; text-align: left; animation: fadeIn 0.3s; }
 .item-pendente { background: var(--bg-container); border: 1px solid var(--border-color); padding: 12px; border-radius: 10px; display: flex; align-items: center; gap: 10px; color: var(--cor-texto); box-shadow: 0 2px 5px var(--shadow-color); margin-bottom: 8px; font-weight: 600;}
 
+/* ==========================================
+   NAVEGAÇÃO INFERIOR E MODAIS
+========================================== */
 .bottom-nav { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); width: calc(100% - 40px); max-width: 440px; background: var(--bg-container); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border: 1px solid var(--border-color); border-radius: 28px; padding: 8px 12px; display: none; justify-content: space-around; align-items: center; box-shadow: 0 20px 40px var(--shadow-color); z-index: 1000; }
 .bottom-nav.ativa { display: flex; animation: slideUpNav 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 @keyframes slideUpNav { from { transform: translate(-50%, 100px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
@@ -95,6 +115,9 @@ input:focus, select:focus { outline: none; border-color: var(--primary); box-sha
 .modal-overlay.ativo .modal-content { transform: translateY(0); }
 .modal-fullscreen-content { background: var(--bg-container); backdrop-filter: var(--glass-blur); padding: 25px; border-radius: 24px; width: 95%; max-width: 600px; height: 90vh; max-height: 850px; overflow-y: auto; text-align: left; position: relative; box-shadow: 0 25px 50px rgba(0,0,0,0.5); color: var(--cor-texto); border: 1px solid var(--border-color); }
 
+/* ==========================================
+   LISTAS E SELETORES
+========================================== */
 .seletor-promotores { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 12px; margin-bottom: 15px; white-space: nowrap; }
 .card-promotor-filtro { background: var(--bg-item); border: 1px solid var(--border-color); padding: 12px 18px; border-radius: 20px; font-size: 14px; font-weight: bold; color: var(--cor-secundaria); cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; }
 .card-promotor-filtro.ativo { background: var(--primary); color: white; border-color: var(--primary); box-shadow: 0 6px 15px rgba(34, 197, 94, 0.3); }
@@ -128,6 +151,9 @@ body.dark-mode .btn-excluir { color: #f87171; border-color: rgba(248, 113, 113, 
 .input-admin-row { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 .input-admin-row input, .input-admin-row select { margin-bottom: 0; padding: 12px; font-size: 14px; flex: 1; min-width: 140px; }
 
+/* ==========================================
+   TOASTS E TELA DE LOGIN
+========================================== */
 #toast-container { position: fixed; top: 80px; right: 20px; left: 20px; z-index: 10000; display: flex; flex-direction: column; gap: 10px; pointer-events: none; align-items: center;}
 .toast { padding: 14px 20px; border-radius: 12px; color: white; font-size: 13px; font-weight: 600; box-shadow: 0 10px 25px rgba(0,0,0,0.3); opacity: 0; transform: translateY(-20px); transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); text-align: left; max-width: 400px; width: 100%; pointer-events: auto; display: flex; align-items: center; gap: 12px; backdrop-filter: blur(10px); }
 .toast.show { opacity: 1; transform: translateY(0); }
@@ -160,7 +186,7 @@ body.dark-mode .logo-rodape-login { filter: invert(1) brightness(2); opacity: 0.
 #painel-erro-conexao { display: none; position: fixed; top: 15px; left: 50%; transform: translateX(-50%); z-index: 10001; background: rgba(239, 68, 68, 0.95); backdrop-filter: blur(8px); border: 1px solid #ff8080; padding: 12px 20px; border-radius: 14px; text-align: center; box-shadow: 0 10px 25px rgba(239,68,68,0.4); width: 90%; max-width: 400px; }
 
 /* =========================================
-   NOVO CSS: ESTRUTURA DOS CARDS E EMOJIS
+   ESTRUTURA DOS CARDS E EMOJIS
 ========================================= */
 .loja-card-acompanhamento { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; margin-bottom: 15px; overflow: hidden; box-shadow: 0 2px 5px var(--shadow-color); }
 .loja-titulo { background: var(--bg-item); padding: 12px 15px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 14px; }
@@ -177,10 +203,10 @@ body.dark-mode .logo-rodape-login { filter: invert(1) brightness(2); opacity: 0.
 .emoji-badge { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
 .aparelho-nome { font-weight: 800; font-size: 14px; color: var(--cor-texto); }
 .imei-texto { font-size: 11px; color: var(--cor-secundaria); margin-left: 42px; }
+
 /* ==========================================
-   NOVOS RECURSOS: SKELETON E SWIPE
+   SKELETON E SWIPE (MOBILE & DESKTOP)
 ========================================== */
-/* Skeleton Loaders */
 .skeleton { 
     background: linear-gradient(90deg, var(--bg-item) 25%, var(--bg-card) 50%, var(--bg-item) 75%); 
     background-size: 200% 100%; 
@@ -192,22 +218,13 @@ body.dark-mode .logo-rodape-login { filter: invert(1) brightness(2); opacity: 0.
 .skeleton-text { height: 14px; width: 100%; }
 .skeleton-title { height: 18px; width: 50%; }
 
-/* Swipe para Ações (Gestos) */
 .swipe-container { position: relative; overflow: hidden; border-radius: 12px; margin-bottom: 12px; background: var(--bg-fundo); border: 1px solid var(--border-color); }
 .swipe-content { position: relative; z-index: 2; transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); background: var(--bg-card); width: 100%; }
 .swipe-actions { position: absolute; top: 0; bottom: 0; right: 0; display: flex; align-items: center; justify-content: flex-end; padding-right: 15px; width: 100%; z-index: 1; }
-/* =========================================
-   CORREÇÃO DO SWIPE PARA PC E MOBILE
-========================================= */
-.swipe-container { position: relative; overflow: hidden; border-radius: 12px; margin-bottom: 12px; background: var(--bg-fundo); border: 1px solid var(--border-color); }
-.swipe-content { position: relative; z-index: 2; transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); background: var(--bg-card); }
-.swipe-actions { position: absolute; top: 0; bottom: 0; right: 0; display: flex; align-items: center; justify-content: flex-end; padding-right: 15px; width: 100%; z-index: 1; }
 
-/* No Computador (Desktop): Mantém o botão visível na lateral ou revela ao passar o mouse para facilitar o clique */
 @media (min-width: 768px) {
     .swipe-container:hover .swipe-content {
         transform: translateX(-120px);
     }
-    /* Oculta o texto de "Deslize" no PC pois lá usa o mouse */
     .texto-deslize-mobile { display: none !important; }
 }

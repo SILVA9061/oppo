@@ -114,14 +114,12 @@
             <label style="font-size: 12px; font-weight: bold; color: var(--cor-secundaria);">Selecione a Loja:</label>
             <select id="select-loja-share" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 15px; background: var(--bg-input); color: var(--cor-texto);"></select>
             
-            <!-- AVISO DE AUTOMAÇÃO -->
             <div style="background: rgba(16, 185, 129, 0.1); border: 1px dashed #10b981; padding: 10px; border-radius: 8px; margin-bottom: 15px; text-align: center;">
                 <span style="font-size: 12px; font-weight: bold; color: #10b981;"><i data-lucide="bot" class="lucide-sm"></i> Suas vendas (OPPO) são puxadas automaticamente!</span>
             </div>
 
             <label style="font-size: 12px; font-weight: bold; color: #ef4444; display: block; margin-bottom: 8px;">Concorrência (Fechamento do Dia):</label>
             
-            <!-- AQUI É ONDE O JS VAI INJETAR AS MARCAS DINAMICAMENTE -->
             <div id="container-inputs-concorrencia" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
             </div>
         </div>
@@ -193,7 +191,6 @@
     </div>
 </div>
 
-<!-- MODAL DE NOVA MARCA CONCORRENTE -->
 <div id="modal-nova-marca" class="modal-overlay">
     <div class="modal-content">
         <h3 style="color: var(--primary);"><i data-lucide="plus-circle"></i> Nova Marca</h3>
@@ -418,16 +415,16 @@
 
 <div id="tela-dashboard" class="tela">
     
- <!-- CONTROLES GERAIS (Servem para as duas abas) -->
+    <!-- CONTROLES GERAIS -->
     <div class="controles-topo-acompanhamento" style="margin-bottom: 10px; display: flex; flex-direction: column; gap: 10px;">
         
         <!-- BOTÕES DE FILTRO RÁPIDO NO DASHBOARD -->
         <div style="display: flex; gap: 5px; overflow-x: auto; padding-bottom: 2px;" class="tabs-header">
-            <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--primary);" onclick="setFiltroDataRapidoDash('hoje')">Hoje</button>
-            <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--primary);" onclick="setFiltroDataRapidoDash('ontem')">Ontem</button>
-            <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--primary);" onclick="setFiltroDataRapidoDash('semana')">Semana</button>
-            <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--primary);" onclick="setFiltroDataRapidoDash('mes')">Mês</button>
-            <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--cor-secundaria); color: var(--cor-secundaria);" onclick="setFiltroDataRapidoDash('limpar')">Limpar</button>
+            <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--primary); color: var(--cor-texto) !important; opacity: 1;" onclick="setFiltroDataRapidoDash('hoje')">Hoje</button>
+            <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--primary); color: var(--cor-texto) !important; opacity: 1;" onclick="setFiltroDataRapidoDash('ontem')">Ontem</button>
+            <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--primary); color: var(--cor-texto) !important; opacity: 1;" onclick="setFiltroDataRapidoDash('semana')">Semana</button>
+            <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--primary); color: var(--cor-texto) !important; opacity: 1;" onclick="setFiltroDataRapidoDash('mes')">Mês</button>
+            <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--cor-secundaria); color: var(--cor-secundaria) !important; opacity: 1;" onclick="setFiltroDataRapidoDash('limpar')">Limpar</button>
         </div>
 
         <div style="display: flex; gap: 10px; align-items: center; width: 100%;">
@@ -437,6 +434,14 @@
             </div>
             <button class="btn-sistema" onclick="forcarAtualizacaoDashboard()" style="margin-bottom: 0; width: auto; padding: 14px 18px; border-radius: 12px; background: var(--primary-gradiente);" title="Forçar Atualização"><i data-lucide="refresh-cw" id="icon-refresh-dash" style="margin: 0;"></i></button>
             <button class="btn-sistema" onclick="compartilharDashboard()" style="margin-bottom: 0; width: auto; padding: 14px 18px; border-radius: 12px; background: #8b5cf6;" title="Compartilhar Print"><i data-lucide="camera" style="margin: 0;"></i></button>
+        </div>
+
+        <div style="display: flex; gap: 10px;" id="container-filtro-supervisor-dash">
+            <select id="filtro-supervisor-dash" onchange="mudouSupervisorDash()"></select>
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 5px;" id="container-filtro-promotor-dash">
+            <select id="filtro-promotor-dash" onchange="mudouPromotorDash()"></select>
+            <select id="filtro-loja-dash" onchange="abrirDashboard(); carregarGraficosShare();"></select>
         </div>
     </div>
 
