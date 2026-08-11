@@ -2857,8 +2857,9 @@ function baixarRelatorioHistorico() {
     }));
     exportarParaCSV("Historico_Auditoria", dadosLimpos, ["Data", "Tipo", "Status", "Promotor", "Detalhe"]);
 }
+
 // ==========================================
-// CORREÇÃO DEFINITIVA: GESTÃO DE EQUIPES, LOJAS E PROMOTORES
+// CORREÇÃO DEFINITIVA: GESTÃO DE EQUIPES, LOJAS E PROMOTORES (COM LEGADO)
 // ==========================================
 
 let supervisorEmEdicao = null;
@@ -2884,7 +2885,30 @@ function fecharModalEquipe() {
     supervisorEmEdicao = null;
 }
 
-// 1. Corrigido: Renderiza as checkboxes puxando corretamente as lojas do supervisor
+// INTELIGÊNCIA DE RESGATE DE LOJAS ANTIGAS:
+function podeVerLojaNoModal(nomeLoja) {
+    // Master vê tudo
+    if (supervisorEmEdicao === 'geral' || usuarioLogado.id === 'master') return true;
+    
+    let cfg = lojasConfig[nomeLoja];
+    if (!cfg) return false;
+    
+    // 1. Se a loja já for registrada oficialmente na região dele
+    if (cfg.regiao === supervisorEmEdicao) return true;
+    
+    // 2. Se a loja for antiga (legada) e ainda não tem dono no banco de dados
+    if (!cfg.regiao) return true;
+    
+    // 3. Trava de segurança: Se algum promotor dele atende essa loja, ele deve poder ver
+    for (let k in bancoUsuarios) {
+        let p = bancoUsuarios[k];
+        if (p.cargo === "promotor" && p.criadoPor === supervisorEmEdicao && p.lojasPermitidas && p.lojasPermitidas.includes(nomeLoja)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function renderizarCheckboxLojas() {
     let container = document.getElementById('modal-promotor-lojas');
     if (!container) return;
@@ -2892,8 +2916,7 @@ function renderizarCheckboxLojas() {
     let lojasDestaRegiao = [];
     
     for (let l in lojasConfig) {
-        // Garante que o Master veja tudo, mas o Supervisor veja só as lojas da região dele
-        if (lojasConfig[l].regiao === supervisorEmEdicao || supervisorEmEdicao === 'geral' || usuarioLogado.id === 'master') {
+        if (podeVerLojaNoModal(l)) {
             lojasDestaRegiao.push(l);
         }
     }
@@ -2908,7 +2931,6 @@ function renderizarCheckboxLojas() {
     container.innerHTML = html;
 }
 
-// 2. Corrigido: Cria a loja e VINCULA ela à região do Supervisor
 function adminAddLojaEquipe() {
     let nomeLoja = document.getElementById('modal-loja-nome').value.trim();
     let capaLoja = Number(document.getElementById('modal-loja-capa').value) || 0;
@@ -2916,11 +2938,10 @@ function adminAddLojaEquipe() {
     if (!nomeLoja) return mostrarToast("Digite o nome da loja.", "alerta");
     
     if (!lojasConfig[nomeLoja]) {
-        // A MAGIA ACONTECE AQUI: Salva a "regiao" como o ID do supervisor
         lojasConfig[nomeLoja] = { capa: capaLoja, vendedores: [], regiao: supervisorEmEdicao };
     } else {
         lojasConfig[nomeLoja].capa = capaLoja;
-        if(!lojasConfig[nomeLoja].regiao) lojasConfig[nomeLoja].regiao = supervisorEmEdicao;
+        lojasConfig[nomeLoja].regiao = supervisorEmEdicao; // Se já existia (antiga), ele "rouba" a posse para a região dele
     }
 
     document.getElementById('modal-loja-nome').value = "";
@@ -2934,7 +2955,6 @@ function adminAddLojaEquipe() {
     salvarConfiguracoesGlobais(false);
 }
 
-// 3. Cria e salva o promotor garantindo que as lojas selecionadas fiquem salvas
 function adminAddPromotorEquipe() {
     let login = document.getElementById('modal-promotor-login').value.trim();
     let nome = document.getElementById('modal-promotor-nome').value.trim();
@@ -2955,19 +2975,25 @@ function adminAddPromotorEquipe() {
     bancoUsuarios[login].cargo = "promotor";
     bancoUsuarios[login].nome = nome;
     if(senha) bancoUsuarios[login].senha = senha;
-    else if(!bancoUsuarios[login].senha) bancoUsuarios[login].senha = "123456"; // Senha padrão caso esqueça
+    else if(!bancoUsuarios[login].senha) bancoUsuarios[login].senha = "123456"; 
     
     bancoUsuarios[login].meta = meta;
     bancoUsuarios[login].criadoPor = supervisorEmEdicao;
     bancoUsuarios[login].lojasPermitidas = lojasPermitidas;
     
-    // Permissões
     bancoUsuarios[login].permissoes = {
         vendas: document.getElementById('perm-vendas') ? document.getElementById('perm-vendas').checked : true,
         acomp: document.getElementById('perm-acomp') ? document.getElementById('perm-acomp').checked : true,
         estoqueView: document.getElementById('perm-est-ver') ? document.getElementById('perm-est-ver').checked : true,
         estoqueEdit: document.getElementById('perm-est-edit') ? document.getElementById('perm-est-edit').checked : true
     };
+
+    // ADOÇÃO AUTOMÁTICA: As lojas antigas que ele vinculou ao promotor agora são da região dele
+    lojasPermitidas.forEach(l => {
+        if (lojasConfig[l] && !lojasConfig[l].regiao) {
+            lojasConfig[l].regiao = supervisorEmEdicao;
+        }
+    });
 
     mostrarToast("Promotor criado/atualizado com sucesso!", "sucesso");
     
@@ -2981,7 +3007,6 @@ function adminAddPromotorEquipe() {
     salvarConfiguracoesGlobais(false);
 }
 
-// 4. Adiciona vendedores à loja
 function adminAddVendedorEquipe() {
     let lojaSelecionada = document.getElementById('modal-select-loja').value;
     let nomes = document.getElementById('modal-vendedor-nome').value.split(',').map(n => n.trim()).filter(n => n !== "");
@@ -3006,7 +3031,7 @@ function renderizarSelectLojasModal() {
     if (!sel) return;
     let html = '<option value="">Selecione uma loja...</option>';
     for (let l in lojasConfig) {
-        if (lojasConfig[l].regiao === supervisorEmEdicao || supervisorEmEdicao === 'geral' || usuarioLogado.id === 'master') {
+        if (podeVerLojaNoModal(l)) {
             html += `<option value="${l}">${l}</option>`;
         }
     }
@@ -3044,7 +3069,7 @@ function renderizarModalLojas() {
     let html = "";
     
     for (let l in lojasConfig) {
-        if (lojasConfig[l].regiao === supervisorEmEdicao || supervisorEmEdicao === 'geral' || usuarioLogado.id === 'master') {
+        if (podeVerLojaNoModal(l)) {
             let vends = lojasConfig[l].vendedores && lojasConfig[l].vendedores.length > 0 ? lojasConfig[l].vendedores.join(', ') : 'Nenhum';
             html += `
             <div class="item-modal-busca-loja" style="background:var(--bg-container); border:1px solid var(--border-color); padding:15px; border-radius:12px; margin-bottom:10px; text-align:left;">
@@ -3074,7 +3099,6 @@ function excluirPromotorEquipe(login) {
 function excluirLojaEquipe(nomeLoja) {
     if(confirm(`Tem certeza que deseja excluir a loja ${nomeLoja}?`)) {
         delete lojasConfig[nomeLoja];
-        // Retira a loja apagada da permissão dos promotores também
         for(let k in bancoUsuarios) {
             if(bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].lojasPermitidas) {
                 bancoUsuarios[k].lojasPermitidas = bancoUsuarios[k].lojasPermitidas.filter(l => l !== nomeLoja);
@@ -3087,3 +3111,5 @@ function excluirLojaEquipe(nomeLoja) {
         salvarConfiguracoesGlobais(false);
     }
 }
+
+
