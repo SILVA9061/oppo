@@ -2857,9 +2857,8 @@ function baixarRelatorioHistorico() {
     }));
     exportarParaCSV("Historico_Auditoria", dadosLimpos, ["Data", "Tipo", "Status", "Promotor", "Detalhe"]);
 }
-
 // ==========================================
-// CORREÇÃO DEFINITIVA: GESTÃO DE EQUIPES, LOJAS E PROMOTORES (COM LEGADO)
+// CORREÇÃO DEFINITIVA: GESTÃO DE EQUIPES COM INSERT NO BANCO DE DADOS
 // ==========================================
 
 let supervisorEmEdicao = null;
@@ -2885,21 +2884,12 @@ function fecharModalEquipe() {
     supervisorEmEdicao = null;
 }
 
-// INTELIGÊNCIA DE RESGATE DE LOJAS ANTIGAS:
 function podeVerLojaNoModal(nomeLoja) {
-    // Master vê tudo
     if (supervisorEmEdicao === 'geral' || usuarioLogado.id === 'master') return true;
-    
     let cfg = lojasConfig[nomeLoja];
     if (!cfg) return false;
-    
-    // 1. Se a loja já for registrada oficialmente na região dele
     if (cfg.regiao === supervisorEmEdicao) return true;
-    
-    // 2. Se a loja for antiga (legada) e ainda não tem dono no banco de dados
     if (!cfg.regiao) return true;
-    
-    // 3. Trava de segurança: Se algum promotor dele atende essa loja, ele deve poder ver
     for (let k in bancoUsuarios) {
         let p = bancoUsuarios[k];
         if (p.cargo === "promotor" && p.criadoPor === supervisorEmEdicao && p.lojasPermitidas && p.lojasPermitidas.includes(nomeLoja)) {
@@ -2916,9 +2906,7 @@ function renderizarCheckboxLojas() {
     let lojasDestaRegiao = [];
     
     for (let l in lojasConfig) {
-        if (podeVerLojaNoModal(l)) {
-            lojasDestaRegiao.push(l);
-        }
+        if (podeVerLojaNoModal(l)) lojasDestaRegiao.push(l);
     }
     
     lojasDestaRegiao.sort().forEach(l => {
@@ -2931,31 +2919,56 @@ function renderizarCheckboxLojas() {
     container.innerHTML = html;
 }
 
-function adminAddLojaEquipe() {
+// ---------------------------------------------------------
+// 1. CRIAR LOJA DIRETAMENTE NA TABELA DO SUPABASE
+// ---------------------------------------------------------
+async function adminAddLojaEquipe() {
     let nomeLoja = document.getElementById('modal-loja-nome').value.trim();
     let capaLoja = Number(document.getElementById('modal-loja-capa').value) || 0;
 
     if (!nomeLoja) return mostrarToast("Digite o nome da loja.", "alerta");
     
+    // Atualiza na tela (localmente)
     if (!lojasConfig[nomeLoja]) {
         lojasConfig[nomeLoja] = { capa: capaLoja, vendedores: [], regiao: supervisorEmEdicao };
     } else {
         lojasConfig[nomeLoja].capa = capaLoja;
-        lojasConfig[nomeLoja].regiao = supervisorEmEdicao; // Se já existia (antiga), ele "rouba" a posse para a região dele
+        lojasConfig[nomeLoja].regiao = supervisorEmEdicao; 
+    }
+
+    // ENVIA PARA A TABELA 'lojas_config' DO SUPABASE
+    try {
+        mostrarToast("Salvando no banco de dados...", "info");
+        const { error } = await supabaseClient
+            .from('lojas_config')
+            .upsert({ 
+                nome_loja: nomeLoja, 
+                supervisor_login: supervisorEmEdicao, 
+                capa: capaLoja 
+            }, { onConflict: 'nome_loja' });
+
+        if (error) throw error;
+        
+        mostrarToast("Loja criada com sucesso no banco!", "sucesso");
+        
+    } catch (err) {
+        console.error("Erro ao salvar loja no Supabase:", err);
+        mostrarToast("Erro ao conectar com a tabela.", "erro");
     }
 
     document.getElementById('modal-loja-nome').value = "";
     document.getElementById('modal-loja-capa').value = "";
     
-    mostrarToast("Loja criada e vinculada com sucesso!", "sucesso");
-    
     renderizarModalLojas();
     renderizarCheckboxLojas();
     renderizarSelectLojasModal();
-    salvarConfiguracoesGlobais(false);
+    if(typeof salvarConfiguracoesGlobais === 'function') salvarConfiguracoesGlobais(false);
 }
 
-function adminAddPromotorEquipe() {
+// ---------------------------------------------------------
+// 2. CRIAR PROMOTOR DIRETAMENTE NA TABELA DE USUARIOS
+// ---------------------------------------------------------
+async function adminAddPromotorEquipe() {
     let login = document.getElementById('modal-promotor-login').value.trim();
     let nome = document.getElementById('modal-promotor-nome').value.trim();
     let senha = document.getElementById('modal-promotor-senha').value.trim();
@@ -2988,12 +3001,22 @@ function adminAddPromotorEquipe() {
         estoqueEdit: document.getElementById('perm-est-edit') ? document.getElementById('perm-est-edit').checked : true
     };
 
-    // ADOÇÃO AUTOMÁTICA: As lojas antigas que ele vinculou ao promotor agora são da região dele
     lojasPermitidas.forEach(l => {
         if (lojasConfig[l] && !lojasConfig[l].regiao) {
             lojasConfig[l].regiao = supervisorEmEdicao;
         }
     });
+
+    // TENTA SALVAR NA TABELA SEPARADA DE 'usuarios' (Se existir)
+    try {
+        await supabaseClient.from('usuarios').upsert({
+            login: login,
+            nome: nome,
+            senha: bancoUsuarios[login].senha,
+            cargo: 'promotor',
+            criado_por: supervisorEmEdicao
+        }, { onConflict: 'login' });
+    } catch(e) { console.warn("Tabela 'usuarios' não mapeada perfeitamente. Seguindo fluxo normal."); }
 
     mostrarToast("Promotor criado/atualizado com sucesso!", "sucesso");
     
@@ -3004,10 +3027,13 @@ function adminAddPromotorEquipe() {
     document.querySelectorAll('.check-loja-promotor').forEach(cb => cb.checked = false);
     
     renderizarModalPromotores();
-    salvarConfiguracoesGlobais(false);
+    if(typeof salvarConfiguracoesGlobais === 'function') salvarConfiguracoesGlobais(false);
 }
 
-function adminAddVendedorEquipe() {
+// ---------------------------------------------------------
+// 3. ADICIONAR VENDEDOR E EXCLUIR DA TABELA
+// ---------------------------------------------------------
+async function adminAddVendedorEquipe() {
     let lojaSelecionada = document.getElementById('modal-select-loja').value;
     let nomes = document.getElementById('modal-vendedor-nome').value.split(',').map(n => n.trim()).filter(n => n !== "");
     
@@ -3023,7 +3049,7 @@ function adminAddVendedorEquipe() {
     document.getElementById('modal-vendedor-nome').value = "";
     mostrarToast("Vendedores adicionados!", "sucesso");
     renderizarModalLojas();
-    salvarConfiguracoesGlobais(false);
+    if(typeof salvarConfiguracoesGlobais === 'function') salvarConfiguracoesGlobais(false);
 }
 
 function renderizarSelectLojasModal() {
@@ -3031,9 +3057,7 @@ function renderizarSelectLojasModal() {
     if (!sel) return;
     let html = '<option value="">Selecione uma loja...</option>';
     for (let l in lojasConfig) {
-        if (podeVerLojaNoModal(l)) {
-            html += `<option value="${l}">${l}</option>`;
-        }
+        if (podeVerLojaNoModal(l)) html += `<option value="${l}">${l}</option>`;
     }
     sel.innerHTML = html;
 }
@@ -3042,7 +3066,6 @@ function renderizarModalPromotores() {
     let container = document.getElementById('lista-modal-promotores');
     if (!container) return;
     let html = "";
-    
     for (let k in bancoUsuarios) {
         if (bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === supervisorEmEdicao) {
             let p = bancoUsuarios[k];
@@ -3058,7 +3081,7 @@ function renderizarModalPromotores() {
             </div>`;
         }
     }
-    if (html === "") html = "<div style='font-size:13px; color:var(--cor-secundaria); text-align:center;'>Nenhum promotor cadastrado na equipe.</div>";
+    if (html === "") html = "<div style='font-size:13px; color:var(--cor-secundaria); text-align:center;'>Nenhum promotor cadastrado.</div>";
     container.innerHTML = html;
     if(typeof lucide !== 'undefined') lucide.createIcons();
 }
@@ -3067,7 +3090,6 @@ function renderizarModalLojas() {
     let container = document.getElementById('lista-modal-lojas');
     if (!container) return;
     let html = "";
-    
     for (let l in lojasConfig) {
         if (podeVerLojaNoModal(l)) {
             let vends = lojasConfig[l].vendedores && lojasConfig[l].vendedores.length > 0 ? lojasConfig[l].vendedores.join(', ') : 'Nenhum';
@@ -3082,34 +3104,40 @@ function renderizarModalLojas() {
             </div>`;
         }
     }
-    if (html === "") html = "<div style='font-size:13px; color:var(--cor-secundaria); text-align:center;'>Nenhuma loja cadastrada na região.</div>";
+    if (html === "") html = "<div style='font-size:13px; color:var(--cor-secundaria); text-align:center;'>Nenhuma loja cadastrada.</div>";
     container.innerHTML = html;
     if(typeof lucide !== 'undefined') lucide.createIcons();
 }
 
-function excluirPromotorEquipe(login) {
-    if(confirm(`Tem certeza que deseja excluir o promotor ${login}?`)) {
+async function excluirPromotorEquipe(login) {
+    if(confirm(`Excluir o promotor ${login}?`)) {
         delete bancoUsuarios[login];
+        try { await supabaseClient.from('usuarios').delete().eq('login', login); } catch(e) {}
         renderizarModalPromotores();
         mostrarToast("Promotor excluído.", "info");
-        salvarConfiguracoesGlobais(false);
+        if(typeof salvarConfiguracoesGlobais === 'function') salvarConfiguracoesGlobais(false);
     }
 }
 
-function excluirLojaEquipe(nomeLoja) {
-    if(confirm(`Tem certeza que deseja excluir a loja ${nomeLoja}?`)) {
+async function excluirLojaEquipe(nomeLoja) {
+    if(confirm(`Excluir a loja ${nomeLoja}?`)) {
         delete lojasConfig[nomeLoja];
         for(let k in bancoUsuarios) {
             if(bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].lojasPermitidas) {
                 bancoUsuarios[k].lojasPermitidas = bancoUsuarios[k].lojasPermitidas.filter(l => l !== nomeLoja);
             }
         }
+        
+        // APAGA DIRETO DA TABELA DO SUPABASE
+        try {
+            await supabaseClient.from('lojas_config').delete().eq('nome_loja', nomeLoja);
+        } catch(e) { console.error("Erro ao deletar loja", e); }
+
         renderizarModalLojas();
         renderizarCheckboxLojas();
         renderizarSelectLojasModal();
         mostrarToast("Loja excluída.", "info");
-        salvarConfiguracoesGlobais(false);
+        if(typeof salvarConfiguracoesGlobais === 'function') salvarConfiguracoesGlobais(false);
     }
 }
-
 
