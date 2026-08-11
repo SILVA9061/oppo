@@ -418,29 +418,25 @@
 
 <div id="tela-dashboard" class="tela">
     
-    <!-- CONTROLES GERAIS (Servem para as duas abas) -->
-    <div class="controles-topo-acompanhamento" style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center;">
-        <select id="seletor-mes-dash" class="seletor-mes" style="padding: 14px; font-size: 15px; margin-bottom: 0; flex: 1; border-color: var(--primary);" onchange="abrirDashboard(); carregarGraficosShare();"><option value="">Mês Atual</option></select>
-        <button class="btn-sistema" onclick="forcarAtualizacaoDashboard()" style="margin-bottom: 0; width: auto; padding: 14px 18px; border-radius: 12px; background: var(--primary-gradiente);" title="Forçar Atualização"><i data-lucide="refresh-cw" id="icon-refresh-dash" style="margin: 0;"></i></button>
-        <button class="btn-sistema" onclick="compartilharDashboard()" style="margin-bottom: 0; width: auto; padding: 14px 18px; border-radius: 12px; background: #8b5cf6;" title="Compartilhar Print"><i data-lucide="camera" style="margin: 0;"></i></button>
-    </div>
-
-    <!-- NOVOS FILTROS EM CASCATA GERAIS DO DASHBOARD -->
-    <div id="filtros-globais-dash" style="background: var(--bg-card); padding: 15px; border-radius: 16px; border: 1px solid var(--border-color); margin-bottom: 20px; text-align: left;">
-        <div id="container-filtro-supervisor-dash" style="display: none; margin-bottom: 12px;">
-            <label style="font-size: 11px; font-weight: bold; color: var(--cor-secundaria);">Equipe / Região (Supervisor):</label>
-            <select id="filtro-supervisor-dash" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--cor-texto);" onchange="mudouSupervisorDash()"></select>
-        </div>
+ <!-- CONTROLES GERAIS (Servem para as duas abas) -->
+    <div class="controles-topo-acompanhamento" style="margin-bottom: 10px; display: flex; flex-direction: column; gap: 10px;">
         
-        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-            <div id="container-filtro-promotor-dash" style="flex: 1; min-width: 140px; display: none;">
-                <label style="font-size: 11px; font-weight: bold; color: var(--cor-secundaria);">Promotor:</label>
-                <select id="filtro-promotor-dash" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #8b5cf6; background: var(--bg-input); color: var(--cor-texto);" onchange="mudouPromotorDash()"></select>
+        <!-- BOTÕES DE FILTRO RÁPIDO NO DASHBOARD -->
+        <div style="display: flex; gap: 5px; overflow-x: auto; padding-bottom: 2px;" class="tabs-header">
+            <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--primary);" onclick="setFiltroDataRapidoDash('hoje')">Hoje</button>
+            <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--primary);" onclick="setFiltroDataRapidoDash('ontem')">Ontem</button>
+            <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--primary);" onclick="setFiltroDataRapidoDash('semana')">Semana</button>
+            <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--primary);" onclick="setFiltroDataRapidoDash('mes')">Mês</button>
+            <button class="tab-btn" style="padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--cor-secundaria); color: var(--cor-secundaria);" onclick="setFiltroDataRapidoDash('limpar')">Limpar</button>
+        </div>
+
+        <div style="display: flex; gap: 10px; align-items: center; width: 100%;">
+            <div style="display: flex; gap: 10px; flex: 1;">
+                <input type="date" id="dash-data-inicio" class="seletor-mes" style="margin-bottom: 0; padding: 14px;" onchange="abrirDashboard(); carregarGraficosShare();">
+                <input type="date" id="dash-data-fim" class="seletor-mes" style="margin-bottom: 0; padding: 14px;" onchange="abrirDashboard(); carregarGraficosShare();">
             </div>
-            <div id="container-filtro-loja-dash" style="flex: 1; min-width: 140px;">
-                <label style="font-size: 11px; font-weight: bold; color: var(--cor-secundaria);">Filtrar por Loja:</label>
-                <select id="filtro-loja-dash" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #10b981; background: var(--bg-input); color: var(--cor-texto);" onchange="abrirDashboard(); carregarGraficosShare();"></select>
-            </div>
+            <button class="btn-sistema" onclick="forcarAtualizacaoDashboard()" style="margin-bottom: 0; width: auto; padding: 14px 18px; border-radius: 12px; background: var(--primary-gradiente);" title="Forçar Atualização"><i data-lucide="refresh-cw" id="icon-refresh-dash" style="margin: 0;"></i></button>
+            <button class="btn-sistema" onclick="compartilharDashboard()" style="margin-bottom: 0; width: auto; padding: 14px 18px; border-radius: 12px; background: #8b5cf6;" title="Compartilhar Print"><i data-lucide="camera" style="margin: 0;"></i></button>
         </div>
     </div>
 

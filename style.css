@@ -177,3 +177,37 @@ body.dark-mode .logo-rodape-login { filter: invert(1) brightness(2); opacity: 0.
 .emoji-badge { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
 .aparelho-nome { font-weight: 800; font-size: 14px; color: var(--cor-texto); }
 .imei-texto { font-size: 11px; color: var(--cor-secundaria); margin-left: 42px; }
+/* ==========================================
+   NOVOS RECURSOS: SKELETON E SWIPE
+========================================== */
+/* Skeleton Loaders */
+.skeleton { 
+    background: linear-gradient(90deg, var(--bg-item) 25%, var(--bg-card) 50%, var(--bg-item) 75%); 
+    background-size: 200% 100%; 
+    animation: shimmer 1.5s infinite; 
+    border-radius: 8px; 
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.skeleton-card { padding: 15px; border-radius: 12px; background: var(--bg-card); border: 1px solid var(--border-color); margin-bottom: 10px; display: flex; flex-direction: column; gap: 10px; }
+.skeleton-text { height: 14px; width: 100%; }
+.skeleton-title { height: 18px; width: 50%; }
+
+/* Swipe para Ações (Gestos) */
+.swipe-container { position: relative; overflow: hidden; border-radius: 12px; margin-bottom: 12px; background: var(--bg-fundo); border: 1px solid var(--border-color); }
+.swipe-content { position: relative; z-index: 2; transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); background: var(--bg-card); width: 100%; }
+.swipe-actions { position: absolute; top: 0; bottom: 0; right: 0; display: flex; align-items: center; justify-content: flex-end; padding-right: 15px; width: 100%; z-index: 1; }
+/* =========================================
+   CORREÇÃO DO SWIPE PARA PC E MOBILE
+========================================= */
+.swipe-container { position: relative; overflow: hidden; border-radius: 12px; margin-bottom: 12px; background: var(--bg-fundo); border: 1px solid var(--border-color); }
+.swipe-content { position: relative; z-index: 2; transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); background: var(--bg-card); }
+.swipe-actions { position: absolute; top: 0; bottom: 0; right: 0; display: flex; align-items: center; justify-content: flex-end; padding-right: 15px; width: 100%; z-index: 1; }
+
+/* No Computador (Desktop): Mantém o botão visível na lateral ou revela ao passar o mouse para facilitar o clique */
+@media (min-width: 768px) {
+    .swipe-container:hover .swipe-content {
+        transform: translateX(-120px);
+    }
+    /* Oculta o texto de "Deslize" no PC pois lá usa o mouse */
+    .texto-deslize-mobile { display: none !important; }
+}

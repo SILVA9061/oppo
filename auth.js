@@ -1,5 +1,5 @@
 // ==========================================
-// auth.js - Autenticação Real com Supabase
+// auth.js - Autenticação Real com Supabase e Permissões
 // ==========================================
 
 let usuarioLogado = null; 
@@ -10,39 +10,25 @@ async function realizarLogin() {
     btn.disabled = true; 
     btn.innerHTML = '<i data-lucide="loader-2" class="lucide-sm" style="animation: spin 2s linear infinite;"></i> Entrando...'; 
     loadIcons();
+    if(typeof ocultarBotaoReconexao === "function") ocultarBotaoReconexao(); 
     
     try {
         const usuarioDigitado = document.getElementById('nome-usuario').value.trim().toLowerCase(); 
         const senhaDigitada = document.getElementById('senha-usuario').value.trim(); 
 
-        // 1. FAZ O SELECT DIRETO NA TABELA DO SUPABASE
-        const { data, error } = await supabaseClient
-            .from('usuarios')
-            .select('*')
-            .eq('login', usuarioDigitado)
-            .single();
+        const { data, error } = await supabaseClient.from('usuarios').select('*').eq('login', usuarioDigitado).single();
 
-        // 2. SE NÃO ACHOU, AVISA O ERRO
         if (error || !data) {
             mostrarToast("Usuário não encontrado!", "erro");
-            btn.disabled = false; 
-            btn.innerHTML = '<i data-lucide="log-in" style="margin-right: 8px;"></i> Acessar Sistema'; 
-            loadIcons();
             return;
         }
 
-        const usuarioEncontrado = data;
-        
-        // 3. VALIDA A SENHA NO BANCO
-        if (usuarioEncontrado.senha === senhaDigitada) {
-            usuarioLogado = usuarioEncontrado; 
+        if (data.senha === senhaDigitada) {
+            usuarioLogado = data; 
+            usuarioLogado.id = data.login; 
+            usuarioLogado.lojasPermitidas = data.lojas_permitidas || [];
+            usuarioLogado.criadoPor = data.criado_por;
             
-            // Adaptando os nomes das colunas do banco para o que o seu front-end espera
-            usuarioLogado.id = usuarioEncontrado.login; 
-            usuarioLogado.lojasPermitidas = usuarioEncontrado.lojas_permitidas || [];
-            usuarioLogado.criadoPor = usuarioEncontrado.criado_por;
-            
-            // Força a troca de senha se for "1234"
             if (senhaDigitada === "1234" && !localStorage.getItem('ignorar_troca_' + usuarioLogado.id) && usuarioLogado.id !== "master") { 
                 usuarioEditandoSenha = usuarioLogado.id; 
                 abrirModalSenha(); 
@@ -53,10 +39,10 @@ async function realizarLogin() {
             mostrarToast("Senha incorreta!", "erro"); 
         }
     } catch (erro) { 
-        console.error("Erro interno no login:", erro); 
-        mostrarToast("Erro ao conectar no banco de dados.", "erro"); 
+        console.error("Erro no login:", erro); 
+        mostrarToast("Erro ao conectar no banco.", "erro"); 
     } finally { 
-        if(document.getElementById('tela-login').classList.contains('ativa')) {
+        if (btn) {
             btn.disabled = false; 
             btn.innerHTML = '<i data-lucide="log-in" style="margin-right: 8px;"></i> Acessar Sistema'; 
             loadIcons(); 
@@ -95,21 +81,17 @@ async function salvarNovaSenha() {
     if (s1.length < 3 || s1 !== s2) return mostrarToast("Erro na senha!", "alerta"); 
     
     const btn = document.getElementById("btn-salvar-senha");
-    btn.innerHTML = 'Salvando no banco...';
+    btn.innerHTML = 'Salvando...';
 
-    // FAZ UM UPDATE DIRETO NO SUPABASE PARA TROCAR A SENHA
-    const { error } = await supabaseClient
-        .from('usuarios')
-        .update({ senha: s1 })
-        .eq('login', usuarioEditandoSenha);
+    const { error } = await supabaseClient.from('usuarios').update({ senha: s1 }).eq('login', usuarioEditandoSenha);
 
     if (error) {
-        mostrarToast("Erro ao salvar nova senha na nuvem.", "erro");
+        mostrarToast("Erro ao salvar senha.", "erro");
         btn.innerHTML = 'Salvar Nova Senha';
         return;
     }
 
-    usuarioLogado.senha = s1; // Atualiza a memória local
+    usuarioLogado.senha = s1; 
     localStorage.setItem('ignorar_troca_' + usuarioEditandoSenha, 'true'); 
     fecharModalSenha(); 
     entrarNoSistema(); 
@@ -125,6 +107,7 @@ function entrarNoSistema() {
         let elSenha = document.getElementById('senha-usuario'); if(elSenha) elSenha.value = "";
         
         let perm = { vendas: true, acomp: true, estoque_ver: true, estoque_editar: true };
+        if (usuarioLogado.permissoes) perm = usuarioLogado.permissoes; 
         
         let adminRole = (usuarioLogado.cargo === "gestor" || usuarioLogado.cargo === "regional" || usuarioLogado.id === "master" || usuarioLogado.cargo === "supervisor");
         
@@ -146,7 +129,7 @@ function entrarNoSistema() {
         let navHome = document.getElementById('nav-home'); 
         if (navHome) { navTo('tela-menu', navHome); } else { mudarTela('tela-menu'); }
     } catch (err) { 
-        console.error("Erro interno no entrarNoSistema:", err); 
+        console.error("Erro no entrarNoSistema:", err); 
         mudarTela('tela-menu'); 
     }
 }
@@ -156,24 +139,18 @@ function fazerLogout() {
     document.getElementById('bottom-nav-bar').classList.remove('ativa'); 
     document.getElementById('header-global').style.display = 'none'; 
     
-    // 1. Limpa os campos digitados para o próximo usuário
-    let elNome = document.getElementById('nome-usuario');
-    if(elNome) elNome.value = ""; 
-    let elSenha = document.getElementById('senha-usuario');
-    if(elSenha) elSenha.value = "";
+    let elNome = document.getElementById('nome-usuario'); if(elNome) elNome.value = ""; 
+    let elSenha = document.getElementById('senha-usuario'); if(elSenha) elSenha.value = "";
     
-    // 2. Destrava o botão e volta ao normal
     const btnLogin = document.getElementById("btn-login");
-    if(btnLogin) {
-        btnLogin.disabled = false;
-        btnLogin.innerHTML = '<i data-lucide="log-in" style="margin-right: 8px;"></i> Acessar Sistema';
-    }
+    if(btnLogin) { btnLogin.disabled = false; btnLogin.innerHTML = '<i data-lucide="log-in" style="margin-right: 8px;"></i> Acessar Sistema'; }
     
-    // 3. Volta para a tela de login
+    if(typeof ocultarBotaoReconexao === "function") ocultarBotaoReconexao(); 
     mudarTela('tela-login'); 
     loadIcons();
 }
-// Verifica se o usuário que fez o login tem autoridade sobre outro usuário
+
+// ESTA É A FUNÇÃO QUE HAVIA SIDO APAGADA E TRAVAVA TUDO:
 function podeGerenciar(logado, alvoId) {
     if (!logado) return false; 
     if (logado.id === alvoId) return true; 
@@ -183,7 +160,6 @@ function podeGerenciar(logado, alvoId) {
     let alvo = bancoUsuarios[alvoId]; 
     if(!alvo) return false;
     
-    // CORREÇÃO: Utilizando alvo.criadoPor ao invés do underline
     if (logado.cargo === "regional") return alvo.regiao === logado.regiao || alvo.criadoPor === logado.id;
     if (logado.cargo === "supervisor") return alvo.criadoPor === logado.id; 
     return false;
