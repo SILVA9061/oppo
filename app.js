@@ -2857,3 +2857,233 @@ function baixarRelatorioHistorico() {
     }));
     exportarParaCSV("Historico_Auditoria", dadosLimpos, ["Data", "Tipo", "Status", "Promotor", "Detalhe"]);
 }
+// ==========================================
+// CORREÇÃO DEFINITIVA: GESTÃO DE EQUIPES, LOJAS E PROMOTORES
+// ==========================================
+
+let supervisorEmEdicao = null;
+
+function abrirModalGerenciarEquipe(supId) {
+    supervisorEmEdicao = supId;
+    let nomeSup = bancoUsuarios[supId] ? bancoUsuarios[supId].nome : supId;
+    document.getElementById('titulo-modal-equipe').innerHTML = `<i data-lucide="users"></i> Equipe: ${nomeSup}`;
+    document.getElementById('modal-gerenciar-equipe').classList.add('ativo');
+    
+    switchTab('equipe-tab-promotores', 'equipe-tab');
+    
+    renderizarModalPromotores();
+    renderizarModalLojas();
+    renderizarCheckboxLojas();
+    renderizarSelectLojasModal();
+    if(typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function fecharModalEquipe() {
+    let modal = document.getElementById('modal-gerenciar-equipe');
+    if(modal) modal.classList.remove('ativo');
+    supervisorEmEdicao = null;
+}
+
+// 1. Corrigido: Renderiza as checkboxes puxando corretamente as lojas do supervisor
+function renderizarCheckboxLojas() {
+    let container = document.getElementById('modal-promotor-lojas');
+    if (!container) return;
+    let html = "";
+    let lojasDestaRegiao = [];
+    
+    for (let l in lojasConfig) {
+        // Garante que o Master veja tudo, mas o Supervisor veja só as lojas da região dele
+        if (lojasConfig[l].regiao === supervisorEmEdicao || supervisorEmEdicao === 'geral' || usuarioLogado.id === 'master') {
+            lojasDestaRegiao.push(l);
+        }
+    }
+    
+    lojasDestaRegiao.sort().forEach(l => {
+        html += `<label style="display:flex; align-items:center; gap:8px; padding:8px; background:var(--bg-fundo); border-radius:8px; border:1px solid var(--border-color); cursor:pointer; width:100%;"><input type="checkbox" class="check-loja-promotor" value="${l}" style="width:18px; height:18px; margin:0;"> <span style="font-weight:bold; color:var(--primary);">${l}</span></label>`;
+    });
+    
+    if (lojasDestaRegiao.length === 0) {
+        html = "<span style='color:#ef4444; font-size:12px; font-weight:bold;'>Nenhuma loja encontrada! Vá na aba 'Lojas & Vends' e crie as lojas primeiro.</span>";
+    }
+    container.innerHTML = html;
+}
+
+// 2. Corrigido: Cria a loja e VINCULA ela à região do Supervisor
+function adminAddLojaEquipe() {
+    let nomeLoja = document.getElementById('modal-loja-nome').value.trim();
+    let capaLoja = Number(document.getElementById('modal-loja-capa').value) || 0;
+
+    if (!nomeLoja) return mostrarToast("Digite o nome da loja.", "alerta");
+    
+    if (!lojasConfig[nomeLoja]) {
+        // A MAGIA ACONTECE AQUI: Salva a "regiao" como o ID do supervisor
+        lojasConfig[nomeLoja] = { capa: capaLoja, vendedores: [], regiao: supervisorEmEdicao };
+    } else {
+        lojasConfig[nomeLoja].capa = capaLoja;
+        if(!lojasConfig[nomeLoja].regiao) lojasConfig[nomeLoja].regiao = supervisorEmEdicao;
+    }
+
+    document.getElementById('modal-loja-nome').value = "";
+    document.getElementById('modal-loja-capa').value = "";
+    
+    mostrarToast("Loja criada e vinculada com sucesso!", "sucesso");
+    
+    renderizarModalLojas();
+    renderizarCheckboxLojas();
+    renderizarSelectLojasModal();
+    salvarConfiguracoesGlobais(false);
+}
+
+// 3. Cria e salva o promotor garantindo que as lojas selecionadas fiquem salvas
+function adminAddPromotorEquipe() {
+    let login = document.getElementById('modal-promotor-login').value.trim();
+    let nome = document.getElementById('modal-promotor-nome').value.trim();
+    let senha = document.getElementById('modal-promotor-senha').value.trim();
+    let meta = Number(document.getElementById('modal-promotor-meta').value) || 0;
+    
+    if (!login || !nome) return mostrarToast("Preencha login e nome.", "alerta");
+    
+    let lojasPermitidas = [];
+    document.querySelectorAll('.check-loja-promotor').forEach(cb => {
+        if (cb.checked) lojasPermitidas.push(cb.value);
+    });
+
+    if (lojasPermitidas.length === 0) return mostrarToast("Selecione pelo menos uma loja para o promotor!", "alerta");
+
+    if (!bancoUsuarios[login]) bancoUsuarios[login] = {};
+    
+    bancoUsuarios[login].cargo = "promotor";
+    bancoUsuarios[login].nome = nome;
+    if(senha) bancoUsuarios[login].senha = senha;
+    else if(!bancoUsuarios[login].senha) bancoUsuarios[login].senha = "123456"; // Senha padrão caso esqueça
+    
+    bancoUsuarios[login].meta = meta;
+    bancoUsuarios[login].criadoPor = supervisorEmEdicao;
+    bancoUsuarios[login].lojasPermitidas = lojasPermitidas;
+    
+    // Permissões
+    bancoUsuarios[login].permissoes = {
+        vendas: document.getElementById('perm-vendas') ? document.getElementById('perm-vendas').checked : true,
+        acomp: document.getElementById('perm-acomp') ? document.getElementById('perm-acomp').checked : true,
+        estoqueView: document.getElementById('perm-est-ver') ? document.getElementById('perm-est-ver').checked : true,
+        estoqueEdit: document.getElementById('perm-est-edit') ? document.getElementById('perm-est-edit').checked : true
+    };
+
+    mostrarToast("Promotor criado/atualizado com sucesso!", "sucesso");
+    
+    document.getElementById('modal-promotor-login').value = "";
+    document.getElementById('modal-promotor-nome').value = "";
+    document.getElementById('modal-promotor-senha').value = "";
+    document.getElementById('modal-promotor-meta').value = "";
+    document.querySelectorAll('.check-loja-promotor').forEach(cb => cb.checked = false);
+    
+    renderizarModalPromotores();
+    salvarConfiguracoesGlobais(false);
+}
+
+// 4. Adiciona vendedores à loja
+function adminAddVendedorEquipe() {
+    let lojaSelecionada = document.getElementById('modal-select-loja').value;
+    let nomes = document.getElementById('modal-vendedor-nome').value.split(',').map(n => n.trim()).filter(n => n !== "");
+    
+    if (!lojaSelecionada || nomes.length === 0) return mostrarToast("Selecione a loja e digite pelo menos um nome.", "alerta");
+    if (!lojasConfig[lojaSelecionada].vendedores) lojasConfig[lojaSelecionada].vendedores = [];
+    
+    nomes.forEach(n => {
+        if (!lojasConfig[lojaSelecionada].vendedores.includes(n)) {
+            lojasConfig[lojaSelecionada].vendedores.push(n);
+        }
+    });
+    
+    document.getElementById('modal-vendedor-nome').value = "";
+    mostrarToast("Vendedores adicionados!", "sucesso");
+    renderizarModalLojas();
+    salvarConfiguracoesGlobais(false);
+}
+
+function renderizarSelectLojasModal() {
+    let sel = document.getElementById('modal-select-loja');
+    if (!sel) return;
+    let html = '<option value="">Selecione uma loja...</option>';
+    for (let l in lojasConfig) {
+        if (lojasConfig[l].regiao === supervisorEmEdicao || supervisorEmEdicao === 'geral' || usuarioLogado.id === 'master') {
+            html += `<option value="${l}">${l}</option>`;
+        }
+    }
+    sel.innerHTML = html;
+}
+
+function renderizarModalPromotores() {
+    let container = document.getElementById('lista-modal-promotores');
+    if (!container) return;
+    let html = "";
+    
+    for (let k in bancoUsuarios) {
+        if (bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].criadoPor === supervisorEmEdicao) {
+            let p = bancoUsuarios[k];
+            let lojasStr = p.lojasPermitidas && p.lojasPermitidas.length > 0 ? p.lojasPermitidas.join(', ') : 'Nenhuma';
+            html += `
+            <div class="item-modal-busca-promotor" style="background:var(--bg-container); border:1px solid var(--border-color); padding:15px; border-radius:12px; margin-bottom:10px; text-align:left;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <strong style="color:var(--primary); font-size:15px;"><i data-lucide="user" class="lucide-sm"></i> ${p.nome || k}</strong>
+                    <button onclick="excluirPromotorEquipe('${k}')" style="background:transparent; border:none; color:#ef4444; cursor:pointer; padding:5px;"><i data-lucide="trash-2"></i></button>
+                </div>
+                <div style="font-size:11px; color:var(--cor-secundaria); margin-top:5px;">Login: <strong>${k}</strong> | Senha: <strong>${p.senha}</strong></div>
+                <div style="font-size:11px; color:var(--cor-secundaria); margin-top:5px;">Lojas: <strong style="color:#10b981;">${lojasStr}</strong></div>
+            </div>`;
+        }
+    }
+    if (html === "") html = "<div style='font-size:13px; color:var(--cor-secundaria); text-align:center;'>Nenhum promotor cadastrado na equipe.</div>";
+    container.innerHTML = html;
+    if(typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function renderizarModalLojas() {
+    let container = document.getElementById('lista-modal-lojas');
+    if (!container) return;
+    let html = "";
+    
+    for (let l in lojasConfig) {
+        if (lojasConfig[l].regiao === supervisorEmEdicao || supervisorEmEdicao === 'geral' || usuarioLogado.id === 'master') {
+            let vends = lojasConfig[l].vendedores && lojasConfig[l].vendedores.length > 0 ? lojasConfig[l].vendedores.join(', ') : 'Nenhum';
+            html += `
+            <div class="item-modal-busca-loja" style="background:var(--bg-container); border:1px solid var(--border-color); padding:15px; border-radius:12px; margin-bottom:10px; text-align:left;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <strong style="color:#10b981; font-size:15px;"><i data-lucide="store" class="lucide-sm"></i> ${l}</strong>
+                    <button onclick="excluirLojaEquipe('${l}')" style="background:transparent; border:none; color:#ef4444; cursor:pointer; padding:5px;"><i data-lucide="trash-2"></i></button>
+                </div>
+                <div style="font-size:11px; color:var(--cor-secundaria); margin-top:5px;">Capa Total: <strong>${lojasConfig[l].capa || 0}</strong></div>
+                <div style="font-size:11px; color:var(--cor-secundaria); margin-top:5px;">Vendedores: <strong style="color:#f59e0b;">${vends}</strong></div>
+            </div>`;
+        }
+    }
+    if (html === "") html = "<div style='font-size:13px; color:var(--cor-secundaria); text-align:center;'>Nenhuma loja cadastrada na região.</div>";
+    container.innerHTML = html;
+    if(typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function excluirPromotorEquipe(login) {
+    if(confirm(`Tem certeza que deseja excluir o promotor ${login}?`)) {
+        delete bancoUsuarios[login];
+        renderizarModalPromotores();
+        mostrarToast("Promotor excluído.", "info");
+        salvarConfiguracoesGlobais(false);
+    }
+}
+
+function excluirLojaEquipe(nomeLoja) {
+    if(confirm(`Tem certeza que deseja excluir a loja ${nomeLoja}?`)) {
+        delete lojasConfig[nomeLoja];
+        // Retira a loja apagada da permissão dos promotores também
+        for(let k in bancoUsuarios) {
+            if(bancoUsuarios[k].cargo === "promotor" && bancoUsuarios[k].lojasPermitidas) {
+                bancoUsuarios[k].lojasPermitidas = bancoUsuarios[k].lojasPermitidas.filter(l => l !== nomeLoja);
+            }
+        }
+        renderizarModalLojas();
+        renderizarCheckboxLojas();
+        renderizarSelectLojasModal();
+        mostrarToast("Loja excluída.", "info");
+        salvarConfiguracoesGlobais(false);
+    }
+}
