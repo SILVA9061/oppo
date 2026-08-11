@@ -169,6 +169,92 @@ async function salvarConfiguracoesGlobais(mostrarAviso = true) {
     }
 }
 // ==========================================
+// SISTEMA DE PULL-TO-REFRESH NATIVO (CORRIGIDO)
+// ==========================================
+let ptrStartY = 0; let ptrCurrentY = 0; let isPulling = false;
+
+document.addEventListener('touchstart', e => {
+    if (window.scrollY === 0 || document.documentElement.scrollTop === 0) { 
+        ptrStartY = e.touches[0].clientY; 
+        isPulling = true; 
+    }
+}, { passive: true });
+
+document.addEventListener('touchmove', e => {
+    if (!isPulling) return;
+    
+    let currentY = e.touches[0].clientY;
+    let diffY = currentY - ptrStartY;
+
+    // Se estamos no topo da página e puxando para baixo
+    if (diffY > 0 && (window.scrollY === 0 || document.documentElement.scrollTop === 0)) {
+        
+        // A MAGIA ACONTECE AQUI: Bloqueia o navegador de recarregar a página inteira
+        if (e.cancelable) e.preventDefault(); 
+        
+        ptrCurrentY = currentY;
+        
+        if (diffY > 15) {
+            let ptr = document.getElementById('ptr-indicator');
+            if (!ptr) {
+                ptr = document.createElement('div'); ptr.id = 'ptr-indicator';
+                ptr.innerHTML = '<i data-lucide="arrow-down" id="ptr-icon" style="margin:0;"></i>';
+                document.body.appendChild(ptr);
+                if(typeof lucide !== 'undefined') lucide.createIcons();
+            }
+            
+            // Calcula a puxada para a bolinha descer suavemente
+            let pullDist = Math.min((diffY - 15) / 2, 60);
+            ptr.style.top = pullDist + 'px';
+            
+            let icon = document.getElementById('ptr-icon');
+            if (icon) {
+                if (diffY > 90) { // Bateu a distância certa
+                    icon.setAttribute('data-lucide', 'refresh-cw'); 
+                } else { 
+                    icon.setAttribute('data-lucide', 'arrow-down'); 
+                }
+                if(typeof lucide !== 'undefined') lucide.createIcons();
+            }
+        }
+    } else {
+        isPulling = false;
+    }
+}, { passive: false }); // O "passive: false" é obrigatório para não deixar a página atualizar
+
+document.addEventListener('touchend', e => {
+    if (!isPulling) return;
+    isPulling = false;
+    
+    let diffY = ptrCurrentY - ptrStartY;
+    let ptr = document.getElementById('ptr-indicator');
+    
+    if (ptr && diffY > 90) { // Se puxou o suficiente, solta e atualiza!
+        ptr.classList.add('refreshing'); 
+        ptr.style.top = '40px'; 
+        executarRefreshTelaAtual(); 
+        
+        setTimeout(() => {
+            ptr.style.top = '-60px'; 
+            ptr.classList.remove('refreshing');
+            setTimeout(() => ptr.remove(), 300);
+        }, 1500);
+    } else if (ptr) { // Se não puxou o suficiente, só esconde
+        ptr.style.top = '-60px'; 
+        setTimeout(() => ptr.remove(), 300);
+    }
+    ptrStartY = 0; ptrCurrentY = 0;
+});
+
+function executarRefreshTelaAtual() {
+    vibrar(50);
+    if (document.getElementById('tela-dashboard').classList.contains('ativa')) { forcarAtualizacaoDashboard(); } 
+    else if (document.getElementById('tela-acompanhamento').classList.contains('ativa')) { carregarDadosDoBanco(); } 
+    else if (document.getElementById('tela-estoque').classList.contains('ativa')) { carregarEstoqueDoBanco(); } 
+    else if (document.getElementById('tela-historico').classList.contains('ativa')) { carregarHistoricoDoBanco(true); } 
+    else { mostrarToast("Atualizado!", "sucesso"); }
+}
+// ==========================================
 // app.js - PARTE 2 DE 10
 // Utilitários Matemáticos, Skeletons e Dias Úteis
 // ==========================================
@@ -212,63 +298,7 @@ function ehPremium(textoBruto, supervisorId) {
     if (!pSup || Object.keys(pSup).length === 0) pSup = aparelhosPremium["geral"] || {}; 
     return (pSup[chave] === 1 || pSup[chave] === true); 
 }
-// ==========================================
-// SISTEMA DE PULL-TO-REFRESH NATIVO (NOVO)
-// ==========================================
-let ptrStartY = 0; let ptrCurrentY = 0; let isPulling = false;
 
-document.addEventListener('touchstart', e => {
-    if (window.scrollY === 0) { ptrStartY = e.touches[0].clientY; isPulling = true; }
-}, { passive: true });
-
-document.addEventListener('touchmove', e => {
-    if (!isPulling || window.scrollY > 0) return;
-    ptrCurrentY = e.touches[0].clientY;
-    let diffY = ptrCurrentY - ptrStartY;
-
-    if (diffY > 15) {
-        let ptr = document.getElementById('ptr-indicator');
-        if (!ptr) {
-            ptr = document.createElement('div'); ptr.id = 'ptr-indicator';
-            ptr.innerHTML = '<i data-lucide="arrow-down" id="ptr-icon" style="margin:0;"></i>';
-            document.body.appendChild(ptr);
-            if(typeof lucide !== 'undefined') lucide.createIcons();
-        }
-        ptr.style.top = Math.min(diffY - 50, 20) + 'px';
-        let icon = document.getElementById('ptr-icon');
-        if(diffY > 80) { icon.setAttribute('data-lucide', 'refresh-cw'); } 
-        else { icon.setAttribute('data-lucide', 'arrow-down'); }
-        if(typeof lucide !== 'undefined') lucide.createIcons();
-    }
-}, { passive: true });
-
-document.addEventListener('touchend', e => {
-    if (!isPulling) return;
-    isPulling = false;
-    let diffY = ptrCurrentY - ptrStartY;
-    let ptr = document.getElementById('ptr-indicator');
-    
-    if (ptr && diffY > 80) {
-        ptr.classList.add('refreshing'); ptr.style.top = '25px';
-        executarRefreshTelaAtual(); // Atualiza os dados
-        setTimeout(() => {
-            ptr.style.top = '-60px'; ptr.classList.remove('refreshing');
-            setTimeout(() => ptr.remove(), 300);
-        }, 1500);
-    } else if (ptr) {
-        ptr.style.top = '-60px'; setTimeout(() => ptr.remove(), 300);
-    }
-    ptrStartY = 0; ptrCurrentY = 0;
-});
-
-function executarRefreshTelaAtual() {
-    vibrar(50);
-    if (document.getElementById('tela-dashboard').classList.contains('ativa')) { forcarAtualizacaoDashboard(); } 
-    else if (document.getElementById('tela-acompanhamento').classList.contains('ativa')) { carregarDadosDoBanco(); } 
-    else if (document.getElementById('tela-estoque').classList.contains('ativa')) { carregarEstoqueDoBanco(); } 
-    else if (document.getElementById('tela-historico').classList.contains('ativa')) { carregarHistoricoDoBanco(true); } 
-    else { mostrarToast("Atualizado!", "sucesso"); }
-}
 // ==========================================
 // app.js - PARTE 3 DE 10
 // Seleção de Equipes, Lojas e Vendedores
@@ -661,18 +691,24 @@ async function carregarDadosDoBanco() {
     if(div) div.innerHTML = gerarSkeletonHtml(5);
 
     try {
-const { data, error } = await supabaseClient.from('vendas')
-    .select('*')
-    .neq('status', 'Cancelado')
-    .neq('status', 'Auditoria') // <-- NOVA TRAVA: Ignora auditoria de estoque
-    .order('data_venda', { ascending: false });        if (error) throw error;
+        const { data, error } = await supabaseClient.from('vendas')
+            .select('*')
+            .neq('status', 'Cancelado')
+            .neq('status', 'Auditoria') // TRAVA: Ignora registros de estoque
+            .order('data_venda', { ascending: false });
+            
+        if (error) throw error;
 
-        dadosAcompanhamentoGlobal = data.map(row => ({
-            Vendedor: `[${row.loja}] ${row.vendedor}`,
-            Aparelhos: row.aparelhos_vendidos,
-            Data: row.data_venda,
-            Status: row.status || "Realizado"
-        }));
+        dadosAcompanhamentoGlobal = data
+            // TRAVA BLINDADA: Filtra qualquer coisa que contenha [AUDITORIA]
+            .filter(row => !(row.aparelhos_vendidos || "").toUpperCase().includes('[AUDITORIA]'))
+            .map(row => ({
+                Vendedor: `[${row.loja}] ${row.vendedor}`,
+                Aparelhos: row.aparelhos_vendidos,
+                Data: row.data_venda,
+                Status: row.status || "Realizado"
+            }));
+            
         if (typeof renderizarListaAcompanhamento === "function") renderizarListaAcompanhamento();
     } catch (err) {
         console.error(err);
@@ -1563,13 +1599,16 @@ function abrirDashboard() {
     query.then(({ data, error }) => {
         if (error) throw error;
         
-        let dados = (data || []).map(row => ({
-            promotor_login: row.promotor_login, 
-            loja: row.loja,
-            Vendedor: `[${row.loja}] ${row.vendedor}`,
-            Aparelhos: row.aparelhos_vendidos,
-            Data: row.data_venda
-        }));
+        let dados = (data || [])
+            // TRAVA ABSOLUTA: Remove tudo que for auditoria antes de gerar os gráficos e metas
+            .filter(row => !(row.aparelhos_vendidos || "").toUpperCase().includes('[AUDITORIA]'))
+            .map(row => ({
+                promotor_login: row.promotor_login, 
+                loja: row.loja,
+                Vendedor: `[${row.loja}] ${row.vendedor}`,
+                Aparelhos: row.aparelhos_vendidos,
+                Data: row.data_venda
+            }));
         
         dadosAcompanhamentoGlobal = dados; 
         gerarGraficos(dados);
