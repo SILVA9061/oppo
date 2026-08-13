@@ -125,7 +125,8 @@ function mudarTela(idTela) {
         if (sidebar) sidebar.style.display = 'none';
         if (container) container.classList.add('login-mode-desktop');
     } else {
-        if (sidebar) sidebar.style.display = ''; 
+        // A correção da barra lateral do celular está nesta linha:
+        if (sidebar) sidebar.style.display = window.innerWidth >= 1024 ? 'flex' : 'none'; 
         if (container) container.classList.remove('login-mode-desktop');
     }
 
@@ -1061,7 +1062,15 @@ function gerarGraficos(dadosVendas) {
     let listaFocoHtml = ""; for(let mod in modelosFocoVendidos) { listaFocoHtml += `<span style="display:inline-block; background:var(--bg-item); color:var(--primary); padding:4px 8px; border-radius:6px; margin:2px; font-weight:bold; border: 1px solid var(--border-color);">${mod}: ${modelosFocoVendidos[mod]} un</span> `; } let htmlDetalhesCopart = `<div style="display: flex; flex-direction: column; gap: 8px;"><div style="display: flex; justify-content: space-between; font-size: 13px;"><span><i data-lucide="star" class="lucide-sm"></i> Foco Vendidos: <strong>${totalFocoVendidoGeral} un</strong></span><span style="color: #10b981; font-weight: bold;">Meta: ${pctMetaFocoGeral}%</span></div><div style="display: flex; justify-content: space-between; font-size: 13px;"><span><i data-lucide="pie-chart" class="lucide-sm"></i> Coparticipação Geral: <strong>${pctCopartGeral}%</strong></span></div><div style="margin-top: 5px;"><strong style="font-size: 11px; color: var(--cor-secundaria); display: block; margin-bottom: 3px;">Foco Vendidos no Período:</strong><div>${listaFocoHtml || "<span style='color:var(--cor-secundaria); font-style:italic;'>Nenhum foco vendido.</span>"}</div></div></div>`; document.getElementById("detalhe-coparticipacao-cards").innerHTML = htmlDetalhesCopart; loadIcons();
 
     try {
-        if (chartCoparticipacao) chartCoparticipacao.destroy(); if (chartCapa) chartCapa.destroy(); if (chartLojas) chartLojas.destroy(); if (chartModelos) chartModelos.destroy();
+        if (typeof Chart === 'undefined') {
+            console.warn("Chart.js não carregou a tempo.");
+            return; 
+        }
+
+        if (chartCoparticipacao) chartCoparticipacao.destroy(); 
+        if (chartCapa) chartCapa.destroy(); 
+        if (chartLojas) chartLojas.destroy(); 
+        if (chartModelos) chartModelos.destroy();
         let corTextoGrafico = document.body.classList.contains('dark-mode') ? '#f8fafc' : '#64748b'; Chart.defaults.color = corTextoGrafico; const pluginsArr = typeof ChartDataLabels !== 'undefined' ? [ChartDataLabels] : []; let labelsProm = Object.keys(metricas); let metasArr = labelsProm.map(p => metricas[p].metaPremium); let maxMeta = metasArr.length > 0 ? Math.max(...metasArr) : 10; if(maxMeta === -Infinity || maxMeta < 1) maxMeta = 10; 
         let widthProm = Math.max(100, labelsProm.length * 18); let wrapCapa = document.getElementById('wrap-graficoMetaPremiumCapa'); if(wrapCapa) wrapCapa.style.minWidth = widthProm + '%'; let wrapCopart = document.getElementById('wrap-graficoCoparticipacaoPromotores'); if(wrapCopart) wrapCopart.style.minWidth = widthProm + '%';
 
@@ -1112,7 +1121,28 @@ function gerarGraficos(dadosVendas) {
         if (chartPaceVisual) chartPaceVisual.destroy();
 
         let horasContador = { "08:00": 0, "09:00": 0, "10:00": 0, "11:00": 0, "12:00": 0, "13:00": 0, "14:00": 0, "15:00": 0, "16:00": 0, "17:00": 0, "18:00": 0, "19:00": 0, "20:00": 0, "21:00": 0 };
+        
         dadosVendas.forEach(row => {
+            let pKey = row.promotor_login; 
+            let loja = (row.loja || "Outras").trim(); 
+
+            let usuarioVenda = bancoUsuarios[pKey];
+            if (!usuarioVenda || usuarioVenda.cargo !== "promotor") {
+                let donoDaLoja = Object.keys(bancoUsuarios).find(k => {
+                    let u = bancoUsuarios[k];
+                    return u.cargo === "promotor" && u.lojasPermitidas && u.lojasPermitidas.some(l => l.trim().toLowerCase() === loja.toLowerCase());
+                });
+                if (donoDaLoja) pKey = donoDaLoja;
+            }
+
+            if (!promotoresEscopo.has(pKey)) return; 
+
+            if (lojaFoco !== "todas") {
+                let lojaFormatada = loja.toLowerCase().replace(/\s+/g, '').trim();
+                let focoFormatado = lojaFoco.toLowerCase().replace(/\s+/g, '').trim();
+                if (lojaFormatada !== focoFormatado && !lojaFormatada.includes(focoFormatado) && !focoFormatado.includes(lojaFormatada)) return;
+            }
+
             if (row.Data) {
                 let d = new Date(row.Data);
                 if (!isNaN(d)) {
